@@ -1,0 +1,43 @@
+# ==========================================
+# GITIGNORE CHO HỆ THỐNG CHAT ĐA CLIENT
+# Môn học: Lập trình mạng máy tính - Nhóm 11
+# MSSV: 2380601882 - Lê Nhật Quỳnh
+# ==========================================
+
+# --- Java & IDE (Server) ---
+/server/target/
+/server/bin/
+/server/.settings/
+/server/.classpath
+/server/.project
+/server/.idea/
+/server/*.iml
+/server/out/
+*.class
+*.jar
+*.war
+*.ear
+
+# --- C# & Visual Studio (Desktop Client) ---
+/desktop-client/**/bin/
+/desktop-client/**/obj/
+/desktop-client/.vs/
+/desktop-client/*/*.user
+/desktop-client/*.suo
+/desktop-client/*.userosscache
+/desktop-client/*.sln.docstates
+*.exe
+*.dll
+*.pdb
+
+# --- Web Client & Node ---
+/web-client/node_modules/
+/web-client/dist/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- System & Misc ---
+*.log
+*.tmp
+.vscode/

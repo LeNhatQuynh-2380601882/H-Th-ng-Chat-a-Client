@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Chat Đa Client (WebSocket Gateway) - Nhóm 11</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- SCREEN 1: LOGIN CARD -->
+        <div id="loginScreen" class="login-wrapper">
+            <div class="glass-card login-card text-center">
+                <div class="logo-icon mb-3">
+                    <i class="fa-solid fa-comments"></i>
+                </div>
+                <h3 class="fw-bold mb-1">HỆ THỐNG CHAT ONLINE</h3>
+                <p class="text-muted small mb-4">Môn Lập Trình Mạng - Nhóm 11 (WebSocket Client)</p>
+                
+                <form id="loginForm">
+                    <div class="mb-3 text-start">
+                        <label for="usernameInput" class="form-label small fw-semibold">Tên người dùng (Username)</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+                            <input type="text" class="form-control" id="usernameInput" placeholder="Ví dụ: 2380601882_Quynh" value="2380601882_WebUser" required>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 mb-4">
+                        <div class="col-8 text-start">
+                            <label for="serverIp" class="form-label small fw-semibold">Host WebSocket</label>
+                            <input type="text" class="form-control" id="serverIp" value="localhost" required>
+                        </div>
+                        <div class="col-4 text-start">
+                            <label for="serverPort" class="form-label small fw-semibold">Port Gateway</label>
+                            <input type="number" class="form-control" id="serverPort" value="8887" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold btn-glow" id="btnLogin">
+                        <i class="fa-solid fa-plug me-2"></i> KẾT NỐI & ĐĂNG NHẬP
+                    </button>
+                </form>
+                <div id="loginStatus" class="mt-3 small text-info display-none"></div>
+            </div>
+        </div>
+
+        <!-- SCREEN 2: MAIN CHAT ROOM -->
+        <div id="chatScreen" class="chat-wrapper display-none">
+            <!-- SIDEBAR: ONLINE USERS -->
+            <div class="chat-sidebar glass-card">
+                <div class="sidebar-header d-flex align-items-center justify-content-between p-3 border-bottom border-secondary">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar bg-primary text-white rounded-circle fw-bold" id="myAvatar">Q</div>
+                        <div>
+                            <h6 class="mb-0 fw-bold" id="displayMyName">User</h6>
+                            <span class="badge bg-success"><i class="fa-solid fa-circle me-1 small"></i> Online</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger" id="btnLogout" title="Đăng xuất">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+
+                <div class="p-3 pb-2">
+                    <h6 class="text-uppercase text-muted small fw-bold tracking-wider mb-2">Danh sách kết nối</h6>
+                    <div class="input-group input-group-sm mb-2">
+                        <span class="input-group-text bg-dark border-secondary text-muted"><i class="fa-solid fa-search"></i></span>
+                        <input type="text" class="form-control bg-dark text-light border-secondary" placeholder="Tìm người dùng..." id="searchUser">
+                    </div>
+                </div>
+
+                <div class="user-list-container px-2 pb-3" id="userList">
+                    <!-- Dynamic user items will be rendered here -->
+                    <div class="user-item active p-2 rounded mb-1 d-flex align-items-center gap-2" data-target="ALL">
+                        <div class="avatar bg-gradient-primary text-white rounded-circle"><i class="fa-solid fa-users"></i></div>
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">TẤT CẢ (ALL)</div>
+                            <div class="small text-muted">Chat nhóm Broadcast</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MAIN CHAT AREA -->
+            <div class="chat-main glass-card">
+                <!-- CHAT HEADER -->
+                <div class="chat-header p-3 d-flex align-items-center justify-content-between border-bottom border-secondary">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="avatar bg-gradient-primary text-white rounded-circle fs-5" id="chatHeaderAvatar">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold" id="chatHeaderTitle">Phòng Chat Nhóm (ALL)</h5>
+                            <span class="small text-success" id="typingIndicator"></span>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <span class="badge bg-dark border border-secondary text-light p-2">
+                            <i class="fa-solid fa-shield-halved text-warning me-1"></i> Session Token Active
+                        </span>
+                    </div>
+                </div>
+
+                <!-- CHAT MESSAGES LOG -->
+                <div class="chat-messages p-3" id="chatMessages">
+                    <div class="system-message text-center my-3">
+                        <span class="badge bg-secondary opacity-75">Hệ thống đã sẵn sàng truyền nhận JSON qua WebSocket.</span>
+                    </div>
+                </div>
+
+                <!-- CHAT INPUT BAR -->
+                <div class="chat-input-bar p-3 border-top border-secondary">
+                    <form id="messageForm" class="d-flex gap-2">
+                        <input type="text" id="messageInput" class="form-control form-control-lg bg-dark text-light border-secondary" placeholder="Nhập nội dung tin nhắn..." autocomplete="off">
+                        <button type="submit" class="btn btn-primary px-4 btn-glow fw-bold">
+                            <i class="fa-solid fa-paper-plane me-1"></i> GỬI
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
