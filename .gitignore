@@ -26,6 +26,13 @@
 /desktop-client/*.suo
 /desktop-client/*.userosscache
 /desktop-client/*.sln.docstates
+.vs/
+*.user
+*.suo
+[Bb]in/
+[Oo]bj/
+TestRunner/
+Properties/launchSettings.json
 *.exe
 *.dll
 *.pdb
