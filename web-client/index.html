@@ -104,9 +104,18 @@
                             <span class="small text-success" id="typingIndicator"></span>
                         </div>
                     </div>
-                    <div class="d-flex gap-2">
-                        <span class="badge bg-dark border border-secondary text-light p-2">
-                            <i class="fa-solid fa-shield-halved text-warning me-1"></i> Session Token Active
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-sm btn-outline-secondary text-light" id="btnToggleSound" title="Bật/Tắt âm thanh thông báo">
+                            <i class="fa-solid fa-bell" id="soundIcon"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary text-light" id="btnExportChat" title="Xuất lịch sử chat">
+                            <i class="fa-solid fa-download"></i>
+                        </button>
+                        <span class="badge bg-dark border border-secondary text-light p-2 d-none d-md-inline-block">
+                            <i class="fa-solid fa-shield-halved text-warning me-1"></i> <span id="tokenStatus">Token Active</span>
+                        </span>
+                        <span class="badge bg-dark border border-secondary text-info p-2" id="pingBadge" title="Độ trễ WebSocket">
+                            <i class="fa-solid fa-gauge-high me-1"></i> <span id="pingValue">-- ms</span>
                         </span>
                     </div>
                 </div>
@@ -118,10 +127,23 @@
                     </div>
                 </div>
 
+                <!-- QUICK EMOJI BAR -->
+                <div class="emoji-bar px-3 py-1 bg-dark bg-opacity-50 border-top border-secondary d-flex align-items-center gap-2 overflow-auto" id="emojiBar">
+                    <span class="text-muted small me-1"><i class="fa-regular fa-face-smile"></i></span>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="👍">👍</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="❤️">❤️</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="😀">😀</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="😂">😂</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="🔥">🔥</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="🎉">🎉</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="👋">👋</button>
+                    <button type="button" class="btn btn-sm btn-outline-dark text-light emoji-btn px-2 py-0 border-0" data-emoji="👏">👏</button>
+                </div>
+
                 <!-- CHAT INPUT BAR -->
                 <div class="chat-input-bar p-3 border-top border-secondary">
                     <form id="messageForm" class="d-flex gap-2">
-                        <input type="text" id="messageInput" class="form-control form-control-lg bg-dark text-light border-secondary" placeholder="Nhập nội dung tin nhắn..." autocomplete="off">
+                        <input type="text" id="messageInput" class="form-control form-control-lg bg-dark text-light border-secondary" placeholder="Nhập nội dung tin nhắn... (nhấn Enter để gửi)" autocomplete="off">
                         <button type="submit" class="btn btn-primary px-4 btn-glow fw-bold">
                             <i class="fa-solid fa-paper-plane me-1"></i> GỬI
                         </button>

@@ -179,3 +179,42 @@ body {
     background: rgba(255, 255, 255, 0.2);
     border-radius: 4px;
 }
+
+/* Emoji Bar */
+.emoji-bar {
+    min-height: 38px;
+    user-select: none;
+}
+
+.emoji-btn {
+    font-size: 1.15rem;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+    border-radius: 6px;
+}
+
+.emoji-btn:hover {
+    transform: scale(1.25);
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Network latency badge */
+#pingBadge {
+    font-variant-numeric: tabular-nums;
+    transition: color 0.3s ease;
+}
+
+/* Bubble fade-in animation */
+.message-bubble {
+    animation: bubbleFadeIn 0.2s ease-out;
+}
+
+@keyframes bubbleFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
