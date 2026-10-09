@@ -23,9 +23,83 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatMessages = document.getElementById('chatMessages');
     const messageForm = document.getElementById('messageForm');
     const messageInput = document.getElementById('messageInput');
+    const btnToggleSound = document.getElementById('btnToggleSound');
+    const soundIcon = document.getElementById('soundIcon');
+    const btnExportChat = document.getElementById('btnExportChat');
+    const pingValue = document.getElementById('pingValue');
+    const tokenStatus = document.getElementById('tokenStatus');
+    const emojiBar = document.getElementById('emojiBar');
 
     let activeTarget = 'ALL';
     let typingTimer = null;
+    let soundEnabled = true;
+    let chatHistory = [];
+
+    // Notification Sound Synthesizer via Web Audio API
+    function playNotificationSound() {
+        if (!soundEnabled) return;
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+            osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+            gain.gain.setValueAtTime(0.15, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.25);
+        } catch (e) {
+            // Audio context may be restricted before interaction
+        }
+    }
+
+    // Toggle Sound Button
+    if (btnToggleSound) {
+        btnToggleSound.addEventListener('click', () => {
+            soundEnabled = !soundEnabled;
+            if (soundEnabled) {
+                soundIcon.className = 'fa-solid fa-bell';
+                btnToggleSound.classList.replace('btn-outline-danger', 'btn-outline-secondary');
+            } else {
+                soundIcon.className = 'fa-solid fa-bell-slash text-danger';
+                btnToggleSound.classList.replace('btn-outline-secondary', 'btn-outline-danger');
+            }
+        });
+    }
+
+    // Quick Emoji Bar Handler
+    if (emojiBar) {
+        emojiBar.querySelectorAll('.emoji-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const emoji = btn.getAttribute('data-emoji');
+                if (emoji && messageInput) {
+                    messageInput.value += emoji;
+                    messageInput.focus();
+                }
+            });
+        });
+    }
+
+    // Export Chat History
+    if (btnExportChat) {
+        btnExportChat.addEventListener('click', () => {
+            if (chatHistory.length === 0) {
+                alert('Chưa có tin nhắn nào để xuất lịch sử!');
+                return;
+            }
+            const logContent = chatHistory.map(m => `[${new Date(m.timestamp).toLocaleString()}] [${m.sender} -> ${m.receiver}]: ${m.content}`).join('\n');
+            const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `chat-log-${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    }
 
     // Login Form Submit
     loginForm.addEventListener('submit', (e) => {
@@ -49,6 +123,15 @@ document.addEventListener('DOMContentLoaded', () => {
         chatScreen.classList.remove('display-none');
         displayMyName.textContent = wsManager.username;
         myAvatar.textContent = wsManager.username.charAt(0).toUpperCase();
+        if (tokenStatus && wsManager.token) {
+            tokenStatus.textContent = `Token: ${wsManager.token.substring(0, 8)}...`;
+        }
+    };
+
+    wsManager.onLatencyUpdate = (latency) => {
+        if (pingValue) {
+            pingValue.textContent = `${latency} ms`;
+        }
     };
 
     wsManager.onUserListUpdated = (users) => {
@@ -57,6 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     wsManager.onMessageReceived = (msg) => {
         appendMessage(msg);
+        if (msg.sender !== wsManager.username) {
+            playNotificationSound();
+        }
     };
 
     wsManager.onTyping = (msg) => {
@@ -158,10 +244,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Filter users on search input
+    if (searchUser) {
+        searchUser.addEventListener('input', () => {
+            const query = searchUser.value.trim().toLowerCase();
+            document.querySelectorAll('#userList .user-item').forEach(item => {
+                const target = item.getAttribute('data-target');
+                if (target === 'ALL') {
+                    item.style.display = '';
+                } else {
+                    item.style.display = target.toLowerCase().includes(query) ? '' : 'none';
+                }
+            });
+        });
+    }
+
     // Append Message to UI
     function appendMessage(msg) {
+        chatHistory.push(msg);
         const isSelf = msg.sender === wsManager.username;
-        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timeStr = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const bubble = document.createElement('div');
         bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
 
