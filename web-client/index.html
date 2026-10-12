@@ -231,7 +231,11 @@
 
             <!-- Chat Input Bar -->
             <div class="chat-input-bar p-3 border-top border-secondary">
-                <form id="messageForm" class="d-flex gap-2">
+                <form id="messageForm" class="d-flex gap-2 align-items-center">
+                    <button type="button" class="btn btn-outline-secondary text-light px-3 flex-shrink-0" id="btnAttachFile" title="Gửi tệp tin hoặc hình ảnh (Tối đa 5MB)">
+                        <i class="fa-solid fa-paperclip"></i>
+                    </button>
+                    <input type="file" id="fileInput" class="d-none">
                     <input type="text"
                            id="messageInput"
                            class="form-control form-control-lg bg-dark text-light border-secondary"

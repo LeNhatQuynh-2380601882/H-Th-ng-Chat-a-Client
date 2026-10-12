@@ -231,8 +231,9 @@
                             <option value="login">1. Đăng nhập (LOGIN)</option>
                             <option value="chat_group">2. Chat Nhóm – CHAT_GROUP</option>
                             <option value="chat_single">3. Chat Cá nhân – CHAT_SINGLE</option>
-                            <option value="typing">4. Báo đang gõ – TYPING</option>
-                            <option value="logout">5. Đăng xuất – LOGOUT</option>
+                            <option value="file_transfer">4. Gửi File/Ảnh – FILE_TRANSFER</option>
+                            <option value="typing">5. Báo đang gõ – TYPING</option>
+                            <option value="logout">6. Đăng xuất – LOGOUT</option>
                             <option value="custom">✏️  Tùy chỉnh (Custom JSON)</option>
                         </select>
                     </div>
@@ -401,6 +402,20 @@
             sender:    '2380601760_TruongHoangPhuc',
             receiver:  '2380600781_PhanQuocHung',
             content:   'Chào Hùng, bạn nhận được gói tin từ Web Client này không?',
+            timestamp: Date.now()
+        }, null, 2),
+
+        file_transfer: () => JSON.stringify({
+            action:    'FILE_TRANSFER',
+            token:     activeToken || '<SESSION_TOKEN>',
+            sender:    '2380601760_TruongHoangPhuc',
+            receiver:  'ALL',
+            content:   JSON.stringify({
+                fileName:   'test-sample.png',
+                fileSize:   1024,
+                isImage:    true,
+                base64Data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+            }),
             timestamp: Date.now()
         }, null, 2),
 

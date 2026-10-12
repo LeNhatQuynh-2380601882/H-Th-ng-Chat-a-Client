@@ -117,6 +117,25 @@ Mọi gói tin truyền qua kênh WebSocket đều sử dụng chuỗi JSON mã 
 
 ---
 
+### E. Gói Truyền tải Tệp tin & Hình ảnh (`FILE_TRANSFER`)
+- Hỗ trợ gửi nhận file, ảnh chéo nền tảng giữa Web Client và Desktop Client:
+  ```json
+  {
+    "action": "FILE_TRANSFER",
+    "token": "d98f7e2a-1b4c-4e89-9a21-abcdef123456",
+    "sender": "2380601760_TruongHoangPhuc",
+    "receiver": "ALL",
+    "content": "{\"fileName\":\"anh-mau.png\",\"fileSize\":20480,\"isImage\":true,\"base64Data\":\"...\"}",
+    "timestamp": 1711000100
+  }
+  ```
+- **Xử lý phía nhận:**
+  - Nếu `isImage = true`: Hiển thị ảnh xem trước (preview) trực tiếp trên giao diện chat.
+  - Nếu file thường: Hiển thị thẻ tệp đính kèm với tên file, dung lượng và nút bấm tải xuống (Download) về máy.
+  - Tự động nhận diện đường link URL (`http://`, `https://`) để người dùng click mở tab mới.
+
+---
+
 ## 4. Hướng dẫn Chạy và Kiểm thử
 
 1. **Khởi chạy bình thường:** Mở file `web-client/index.html` bằng trình duyệt web bất kỳ (Chrome / Edge / Firefox).
