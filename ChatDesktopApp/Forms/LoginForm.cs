@@ -19,43 +19,45 @@ namespace ChatDesktopApp.Forms
         private async void btnConnect_Click(object sender, EventArgs e)
         {
             string username = txtUsername.Text.Trim();
-            string ip = txtServerIp.Text.Trim();
-            int port = (int)numPort.Value;
+            string ip       = txtServerIp.Text.Trim();
+            int    port     = (int)numPort.Value;
 
-            if (string.IsNullOrEmpty(username))
+            // ── Validate Username ──────────────────────────────────────────
+            // Dùng ValidateUsername từ TcpSocketClient — nhất quán với giao thức
+            var (isValid, errorMsg) = TcpSocketClient.ValidateUsername(username);
+            if (!isValid)
             {
-                MessageBox.Show("Vui lòng nhập Tên đăng nhập (Nickname)!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SetStatus(errorMsg, Color.Red);
                 txtUsername.Focus();
+                txtUsername.SelectAll();
                 return;
             }
 
             if (string.IsNullOrEmpty(ip))
             {
-                MessageBox.Show("Vui lòng nhập địa chỉ Server IP!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SetStatus("Vui lòng nhập địa chỉ Server IP!", Color.Red);
                 txtServerIp.Focus();
                 return;
             }
 
-            btnConnect.Enabled = false;
-            lblStatus.ForeColor = Color.DarkOrange;
-            lblStatus.Text = "Đang kết nối tới Java Server...";
-
-            // Đăng ký nhận phản hồi từ Server
+            // ── Đăng ký event handlers ─────────────────────────────────────
             _socketClient.OnMessageReceived += HandleLoginResponse;
-            _socketClient.OnErrorOccurred += HandleNetworkError;
+            _socketClient.OnErrorOccurred   += HandleNetworkError;
+
+            btnConnect.Enabled = false;
+            SetStatus("Đang kết nối tới Java Server...", Color.DarkOrange);
 
             bool connected = await _socketClient.ConnectAsync(ip, port);
             if (connected)
             {
-                lblStatus.Text = "Đang xác thực thông tin đăng nhập...";
+                SetStatus("Đang xác thực thông tin đăng nhập...", Color.DarkOrange);
                 await _socketClient.SendLoginAsync(username);
             }
             else
             {
                 CleanupLoginHandlers();
                 btnConnect.Enabled = true;
-                lblStatus.ForeColor = Color.Red;
-                lblStatus.Text = "Kết nối thất bại! Hãy chắc chắn Server đã chạy.";
+                SetStatus("Kết nối thất bại! Hãy chắc chắn Server đang chạy.", Color.Red);
             }
         }
 
@@ -70,11 +72,11 @@ namespace ChatDesktopApp.Forms
             if (msg.Action == "LOGIN_SUCCESS")
             {
                 CleanupLoginHandlers();
+                SetStatus("Đăng nhập thành công! Đang vào phòng chat...", Color.Green);
 
-                lblStatus.ForeColor = Color.Green;
-                lblStatus.Text = "Đăng nhập thành công! Đang vào phòng chat...";
+                // Đăng ký OnReconnecting trước khi chuyển sang MainForm
+                _socketClient.OnReconnecting += HandleReconnecting;
 
-                // Mở MainForm và ẩn LoginForm
                 var mainForm = new MainForm(_socketClient);
                 mainForm.FormClosed += (s, args) => this.Close();
                 mainForm.Show();
@@ -86,9 +88,12 @@ namespace ChatDesktopApp.Forms
                 _socketClient.Disconnect();
 
                 btnConnect.Enabled = true;
-                lblStatus.ForeColor = Color.Red;
-                lblStatus.Text = $"Đăng nhập thất bại: {msg.Content}";
-                MessageBox.Show(msg.Content ?? "Tên đăng nhập không hợp lệ hoặc đã bị lỗi.", "Lỗi đăng nhập", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                SetStatus($"Đăng nhập thất bại: {msg.Content}", Color.Red);
+                MessageBox.Show(
+                    msg.Content ?? "Tên đăng nhập không hợp lệ hoặc đã tồn tại.",
+                    "Lỗi đăng nhập",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
@@ -102,14 +107,27 @@ namespace ChatDesktopApp.Forms
 
             CleanupLoginHandlers();
             btnConnect.Enabled = true;
-            lblStatus.ForeColor = Color.Red;
-            lblStatus.Text = "Lỗi kết nối!";
+            SetStatus($"Lỗi: {errorMessage}", Color.Red);
+        }
+
+        /// <summary>
+        /// Xử lý sự kiện auto-reconnect — hiển thị trên LoginForm khi nó vẫn visible.
+        /// </summary>
+        private void HandleReconnecting(int attempt)
+        {
+            // Không cần hiển thị trên LoginForm (MainForm đã xử lý)
         }
 
         private void CleanupLoginHandlers()
         {
             _socketClient.OnMessageReceived -= HandleLoginResponse;
-            _socketClient.OnErrorOccurred -= HandleNetworkError;
+            _socketClient.OnErrorOccurred   -= HandleNetworkError;
+        }
+
+        private void SetStatus(string text, Color color)
+        {
+            lblStatus.Text      = text;
+            lblStatus.ForeColor = color;
         }
 
         private void txtUsername_KeyDown(object sender, KeyEventArgs e)

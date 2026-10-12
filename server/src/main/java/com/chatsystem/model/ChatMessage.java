@@ -8,6 +8,8 @@ import com.google.gson.Gson;
 public class ChatMessage {
     private MessageType action;
     private String token;
+    private String msgId;
+    private String clientType;
     private String sender;
     private String receiver;
     private String content;
