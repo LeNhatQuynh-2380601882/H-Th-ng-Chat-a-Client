@@ -3,263 +3,657 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebSocket Protocol Tester - Web Client (Phúc)</title>
+    <title>WebSocket Protocol Tester – Web Client | Nhóm 11</title>
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg:      #0b1120;
+            --surface: #131c2e;
+            --border:  #1e2d47;
+            --primary: #3b82f6;
+            --success: #22c55e;
+            --danger:  #ef4444;
+            --warning: #f59e0b;
+            --info:    #38bdf8;
+            --text:    #e2e8f0;
+            --muted:   #64748b;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+
         body {
-            background-color: #0f172a;
-            color: #f8fafc;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
             min-height: 100vh;
-            padding: 2rem 0;
         }
-        .card {
-            background-color: #1e293b;
-            border: 1px solid #334155;
-            color: #f8fafc;
+
+        /* Navbar */
+        .tester-nav {
+            background: rgba(19,28,46,0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1.5rem;
         }
+
+        /* Cards */
+        .t-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .t-card-header {
+            background: rgba(0,0,0,0.25);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+        }
+
+        /* Form controls */
+        .form-control, .form-select, textarea {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .form-control:focus, .form-select:focus, textarea:focus {
+            background: var(--bg);
+            border-color: var(--primary);
+            color: var(--text);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        .form-control::placeholder { color: var(--muted); }
+
+        /* Log box */
         .log-box {
-            background-color: #090d16;
-            border: 1px solid #1e293b;
+            background: #060c18;
+            border: 1px solid var(--border);
             border-radius: 8px;
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 0.85rem;
-            height: 380px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            height: 420px;
             overflow-y: auto;
-            padding: 1rem;
+            padding: 0.75rem 1rem;
+            line-height: 1.6;
         }
-        .log-in { color: #38bdf8; }
-        .log-out { color: #4ade80; }
-        .log-err { color: #f87171; }
-        .log-sys { color: #fbbf24; }
-        .form-control, .form-select {
-            background-color: #090d16;
-            border-color: #334155;
-            color: #f8fafc;
+        .log-box::-webkit-scrollbar       { width: 5px; }
+        .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+        /* Log entry types */
+        .log-entry { margin: 0; padding: 1px 0; }
+        .log-in    { color: #38bdf8; }   /* Nhận từ Server  */
+        .log-out   { color: #4ade80; }   /* Gửi lên Server  */
+        .log-err   { color: #f87171; }   /* Lỗi             */
+        .log-sys   { color: #fbbf24; }   /* Hệ thống        */
+        .log-token { color: #a78bfa; }   /* Token           */
+
+        .log-ts { opacity: 0.5; user-select: none; }
+
+        /* JSON textarea */
+        #jsonPayload {
+            height: 200px;
+            resize: vertical;
+            line-height: 1.6;
         }
-        .form-control:focus, .form-select:focus {
-            background-color: #090d16;
-            border-color: #38bdf8;
-            color: #f8fafc;
-            box-shadow: 0 0 0 0.25rem rgba(56, 189, 248, 0.25);
+
+        /* Status badge */
+        .conn-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
         }
+        .conn-badge.disconnected { border-color: var(--muted); color: var(--muted); }
+        .conn-badge.connecting   { border-color: var(--warning); color: var(--warning); }
+        .conn-badge.connected    { border-color: var(--success); color: var(--success); }
+
+        .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .connecting .dot { animation: blink 0.8s infinite; }
+        @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
+
+        /* Stats row */
+        .stat-item { text-align: center; }
+        .stat-val  { font-size: 1.4rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .stat-lbl  { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+        /* Quick action pills */
+        .quick-btns .btn { font-size: 0.78rem; }
+
+        /* Scrollbar global */
+        ::-webkit-scrollbar       { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="d-flex align-items-center justify-content-between mb-4">
-            <div>
-                <h3 class="fw-bold mb-1"><i class="fa-solid fa-network-wired text-info me-2"></i>WebSocket Protocol Tester</h3>
-                <p class="text-secondary small mb-0">Công cụ kiểm thử giao thức JSON đóng gói cho Web Client (Trương Hoàng Phúc - 2380601760)</p>
-            </div>
-            <a href="index.html" class="btn btn-outline-info btn-sm">
-                <i class="fa-solid fa-arrow-left me-1"></i> Quay lại Web Chat
-            </a>
-        </div>
 
-        <div class="row g-4">
-            <!-- Connection & Actions -->
-            <div class="col-lg-5">
-                <div class="card p-3 mb-3">
-                    <h6 class="fw-bold text-info mb-3"><i class="fa-solid fa-plug me-2"></i>Cấu hình kết nối</h6>
+<!-- ── Navbar ── -->
+<nav class="tester-nav d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-3">
+        <div>
+            <span class="fw-bold fs-6">
+                <i class="fa-solid fa-network-wired text-info me-2"></i>WebSocket Protocol Tester
+            </span>
+            <span class="d-block" style="font-size:0.72rem;color:var(--muted);">
+                Nhóm 11 – Trương Hoàng Phúc (2380601760) – Môn Lập Trình Mạng
+            </span>
+        </div>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        <!-- Connection status badge -->
+        <div class="conn-badge disconnected" id="statusBadge">
+            <span class="dot"></span>
+            <span id="statusText">Chưa kết nối</span>
+        </div>
+        <a href="index.html" class="btn btn-outline-info btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i>Quay lại Chat
+        </a>
+    </div>
+</nav>
+
+<div class="container-fluid px-4 py-4">
+    <div class="row g-4">
+
+        <!-- ═══════════════════════════════════════
+             CỘT TRÁI: KẾT NỐI + GỬI GÓI TIN
+        ═══════════════════════════════════════ -->
+        <div class="col-lg-5 col-xl-4">
+
+            <!-- Cấu hình kết nối -->
+            <div class="t-card mb-4">
+                <div class="t-card-header d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-plug text-primary"></i>
+                    <span class="fw-semibold">Cấu hình kết nối WebSocket</span>
+                </div>
+                <div class="p-3">
                     <div class="row g-2 mb-3">
                         <div class="col-8">
-                            <label class="form-label small text-secondary">Host / IP</label>
-                            <input type="text" class="form-control form-control-sm" id="testHost" value="127.0.0.1">
+                            <label class="form-label small text-secondary mb-1">Host / IP Server</label>
+                            <input type="text" class="form-control form-control-sm" id="testHost" value="127.0.0.1" placeholder="localhost">
                         </div>
                         <div class="col-4">
-                            <label class="form-label small text-secondary">Port</label>
-                            <input type="number" class="form-control form-control-sm" id="testPort" value="8887">
+                            <label class="form-label small text-secondary mb-1">Cổng Gateway</label>
+                            <input type="number" class="form-control form-control-sm" id="testPort" value="8887" min="1" max="65535">
                         </div>
                     </div>
+
+                    <!-- Stats mini -->
+                    <div class="row g-2 mb-3 text-center">
+                        <div class="col-4 stat-item">
+                            <div class="stat-val text-info" id="statSent">0</div>
+                            <div class="stat-lbl">Gói gửi</div>
+                        </div>
+                        <div class="col-4 stat-item">
+                            <div class="stat-val text-success" id="statRecv">0</div>
+                            <div class="stat-lbl">Gói nhận</div>
+                        </div>
+                        <div class="col-4 stat-item">
+                            <div class="stat-val text-warning" id="statLatency">–</div>
+                            <div class="stat-lbl">RTT (ms)</div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2">
                         <button class="btn btn-primary btn-sm flex-grow-1" id="btnTestConnect">
-                            <i class="fa-solid fa-link me-1"></i> Kết nối
+                            <i class="fa-solid fa-link me-1"></i>Kết nối
                         </button>
                         <button class="btn btn-danger btn-sm" id="btnTestDisconnect" disabled>
-                            <i class="fa-solid fa-link-slash me-1"></i> Ngắt
+                            <i class="fa-solid fa-link-slash me-1"></i>Ngắt
                         </button>
                     </div>
-                    <div id="testConnStatus" class="small mt-2 text-secondary">Trạng thái: Chưa kết nối</div>
                 </div>
+            </div>
 
-                <div class="card p-3">
-                    <h6 class="fw-bold text-info mb-3"><i class="fa-solid fa-paper-plane me-2"></i>Mẫu gói tin gửi nhanh</h6>
+            <!-- Gói tin nhanh -->
+            <div class="t-card mb-4">
+                <div class="t-card-header d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-paper-plane text-success"></i>
+                    <span class="fw-semibold">Soạn &amp; Gửi Gói Tin JSON</span>
+                </div>
+                <div class="p-3">
+                    <!-- Template selector -->
                     <div class="mb-3">
-                        <label class="form-label small text-secondary">Chọn mẫu gói tin</label>
+                        <label class="form-label small text-secondary mb-1">Chọn mẫu gói tin nhanh</label>
                         <select class="form-select form-select-sm" id="templateSelect">
                             <option value="login">1. Đăng nhập (LOGIN)</option>
-                            <option value="chat_group">2. Chat Nhóm (CHAT_GROUP)</option>
-                            <option value="chat_single">3. Chat Cá nhân (CHAT_SINGLE)</option>
-                            <option value="typing">4. Báo đang gõ (TYPING)</option>
-                            <option value="logout">5. Đăng xuất (LOGOUT)</option>
+                            <option value="chat_group">2. Chat Nhóm – CHAT_GROUP</option>
+                            <option value="chat_single">3. Chat Cá nhân – CHAT_SINGLE</option>
+                            <option value="typing">4. Báo đang gõ – TYPING</option>
+                            <option value="logout">5. Đăng xuất – LOGOUT</option>
+                            <option value="custom">✏️  Tùy chỉnh (Custom JSON)</option>
                         </select>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label small text-secondary">Nội dung JSON gửi đi</label>
-                        <textarea class="form-control font-monospace small" id="jsonPayload" rows="7"></textarea>
+                    <!-- JSON editor -->
+                    <div class="mb-2">
+                        <label class="form-label small text-secondary mb-1">
+                            Nội dung JSON gửi đi
+                            <span id="jsonValidLabel" class="ms-2"></span>
+                        </label>
+                        <textarea class="form-control" id="jsonPayload" spellcheck="false"></textarea>
+                    </div>
+
+                    <!-- Quick actions -->
+                    <div class="d-flex gap-1 mb-3 flex-wrap quick-btns">
+                        <button class="btn btn-sm btn-outline-secondary text-light py-0" id="btnFormatJson" title="Định dạng JSON đẹp">
+                            <i class="fa-solid fa-indent me-1"></i>Format
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary text-light py-0" id="btnCopyJson" title="Copy JSON">
+                            <i class="fa-solid fa-copy me-1"></i>Copy
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary text-light py-0" id="btnClearPayload" title="Xóa nội dung">
+                            <i class="fa-solid fa-eraser me-1"></i>Xóa
+                        </button>
                     </div>
 
                     <button class="btn btn-success btn-sm w-100 fw-semibold" id="btnSendRaw" disabled>
-                        <i class="fa-solid fa-share me-1"></i> Gửi gói tin JSON lên Server
+                        <i class="fa-solid fa-share me-1"></i>Gửi Gói Tin JSON lên Server
                     </button>
                 </div>
             </div>
 
-            <!-- Log Monitor -->
-            <div class="col-lg-7">
-                <div class="card p-3 h-100">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <h6 class="fw-bold text-info mb-0"><i class="fa-solid fa-terminal me-2"></i>Nhật ký truyền nhận WebSocket</h6>
-                        <button class="btn btn-sm btn-outline-secondary py-0" id="btnClearLog">
-                            <i class="fa-solid fa-trash me-1"></i> Xóa log
+            <!-- Session Token Card -->
+            <div class="t-card">
+                <div class="t-card-header d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-key text-warning"></i>
+                    <span class="fw-semibold">Session Token</span>
+                </div>
+                <div class="p-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-dark border-secondary text-muted">
+                            <i class="fa-solid fa-fingerprint"></i>
+                        </span>
+                        <input type="text" class="form-control font-monospace"
+                               id="tokenDisplay" value="(chưa có – cần LOGIN trước)"
+                               readonly style="font-size:0.78rem;">
+                        <button class="btn btn-outline-secondary btn-sm text-light" id="btnCopyToken" title="Copy token">
+                            <i class="fa-solid fa-copy"></i>
                         </button>
                     </div>
-                    <div class="log-box" id="logBox">
-                        <div class="log-sys">[Sẵn sàng] Chọn mẫu gói tin và nhấn Kết nối để bắt đầu kiểm thử.</div>
+                    <div class="small text-muted mt-2">
+                        <i class="fa-solid fa-circle-info me-1"></i>
+                        Token được tự động lưu khi nhận gói <code>LOGIN_SUCCESS</code> và điền vào các mẫu gói tin.
                     </div>
                 </div>
             </div>
+
         </div>
+
+        <!-- ═══════════════════════════════════════
+             CỘT PHẢI: LOG MONITOR
+        ═══════════════════════════════════════ -->
+        <div class="col-lg-7 col-xl-8">
+            <div class="t-card h-100 d-flex flex-column">
+                <div class="t-card-header d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-terminal text-info"></i>
+                        <span class="fw-semibold">Nhật Ký Truyền Nhận (WebSocket Log)</span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <!-- Legend -->
+                        <span class="badge" style="background:rgba(56,189,248,0.15);color:#38bdf8;">
+                            ← Nhận
+                        </span>
+                        <span class="badge" style="background:rgba(74,222,128,0.15);color:#4ade80;">
+                            → Gửi
+                        </span>
+                        <span class="badge" style="background:rgba(251,191,36,0.15);color:#fbbf24;">
+                            ⚙ Hệ thống
+                        </span>
+                        <button class="btn btn-sm btn-outline-secondary py-0" id="btnClearLog">
+                            <i class="fa-solid fa-trash me-1"></i>Xóa log
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary py-0" id="btnExportLog">
+                            <i class="fa-solid fa-download me-1"></i>Lưu log
+                        </button>
+                    </div>
+                </div>
+                <div class="log-box flex-grow-1 m-3 mt-3" id="logBox">
+                    <p class="log-entry log-sys">
+                        <span class="log-ts">[--:--:--]</span>
+                        [Sẵn sàng] Nhập địa chỉ Server và bấm "Kết nối" để bắt đầu kiểm thử giao thức WebSocket.
+                    </p>
+                    <p class="log-entry log-sys">
+                        <span class="log-ts">[--:--:--]</span>
+                        Chú thích màu:
+                        <span class="log-in">■ Nhận từ Server</span>  
+                        <span class="log-out">■ Gửi lên Server</span>  
+                        <span class="log-err">■ Lỗi / Cảnh báo</span>  
+                        <span class="log-token">■ Session Token</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
     </div>
+</div>
 
-    <script>
-        let testWs = null;
-        let activeToken = '';
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-        const templates = {
-            login: () => JSON.stringify({
-                action: 'LOGIN',
-                sender: '2380601760_TruongHoangPhuc',
-                content: 'login_web'
-            }, null, 2),
-            chat_group: () => JSON.stringify({
-                action: 'CHAT_GROUP',
-                token: activeToken || 'SESSION_TOKEN_HERE',
-                sender: '2380601760_TruongHoangPhuc',
-                receiver: 'ALL',
-                content: 'Xin chào mọi người từ WebSocket Tester!',
-                timestamp: Date.now()
-            }, null, 2),
-            chat_single: () => JSON.stringify({
-                action: 'CHAT_SINGLE',
-                token: activeToken || 'SESSION_TOKEN_HERE',
-                sender: '2380601760_TruongHoangPhuc',
-                receiver: 'HUNG_DESKTOP',
-                content: 'Chào Hùng, bạn có nhận được gói tin này không?',
-                timestamp: Date.now()
-            }, null, 2),
-            typing: () => JSON.stringify({
-                action: 'TYPING',
-                token: activeToken || 'SESSION_TOKEN_HERE',
-                sender: '2380601760_TruongHoangPhuc',
-                receiver: 'ALL',
-                content: 'is_typing'
-            }, null, 2),
-            logout: () => JSON.stringify({
-                action: 'LOGOUT',
-                token: activeToken || 'SESSION_TOKEN_HERE',
-                sender: '2380601760_TruongHoangPhuc',
-                content: 'logout_web'
-            }, null, 2)
-        };
+<script>
+/* ════════════════════════════════════════════════
+   WS TESTER SCRIPT
+   Kiểm thử toàn bộ giao thức JSON của hệ thống chat.
+   Không phụ thuộc vào websocket.js / app.js.
+════════════════════════════════════════════════ */
+(() => {
+    'use strict';
 
-        const logBox = document.getElementById('logBox');
-        const jsonPayload = document.getElementById('jsonPayload');
-        const templateSelect = document.getElementById('templateSelect');
-        const btnTestConnect = document.getElementById('btnTestConnect');
-        const btnTestDisconnect = document.getElementById('btnTestDisconnect');
-        const btnSendRaw = document.getElementById('btnSendRaw');
-        const testConnStatus = document.getElementById('testConnStatus');
+    /* ── State ── */
+    let testWs      = null;
+    let activeToken = '';
+    let statSent    = 0;
+    let statRecv    = 0;
+    let pingTs      = 0;
+    let pingTimer   = null;
 
-        jsonPayload.value = templates.login();
+    /* ── DOM ── */
+    const logBox         = document.getElementById('logBox');
+    const jsonPayload    = document.getElementById('jsonPayload');
+    const templateSelect = document.getElementById('templateSelect');
+    const btnConnect     = document.getElementById('btnTestConnect');
+    const btnDisconnect  = document.getElementById('btnTestDisconnect');
+    const btnSend        = document.getElementById('btnSendRaw');
+    const statusBadge    = document.getElementById('statusBadge');
+    const statusText     = document.getElementById('statusText');
+    const tokenDisplay   = document.getElementById('tokenDisplay');
+    const jsonValidLabel = document.getElementById('jsonValidLabel');
+    const elSent         = document.getElementById('statSent');
+    const elRecv         = document.getElementById('statRecv');
+    const elLatency      = document.getElementById('statLatency');
 
-        templateSelect.addEventListener('change', () => {
-            const fn = templates[templateSelect.value];
-            if (fn) jsonPayload.value = fn();
-        });
+    /* ════════════════════════════════════════════════
+       GÓI TIN MẪU (Templates)
+    ════════════════════════════════════════════════ */
+    const templates = {
+        login: () => JSON.stringify({
+            action:  'LOGIN',
+            sender:  '2380601760_TruongHoangPhuc',
+            content: 'login_web'
+        }, null, 2),
 
-        function appendLog(type, text) {
-            const time = new Date().toLocaleTimeString();
-            const div = document.createElement('div');
-            div.className = `log-${type}`;
-            div.textContent = `[${time}] ${text}`;
-            logBox.appendChild(div);
-            logBox.scrollTop = logBox.scrollHeight;
+        chat_group: () => JSON.stringify({
+            action:    'CHAT_GROUP',
+            token:     activeToken || '<SESSION_TOKEN>',
+            sender:    '2380601760_TruongHoangPhuc',
+            receiver:  'ALL',
+            content:   'Xin chào mọi người từ WebSocket Tester! 🔥',
+            timestamp: Date.now()
+        }, null, 2),
+
+        chat_single: () => JSON.stringify({
+            action:    'CHAT_SINGLE',
+            token:     activeToken || '<SESSION_TOKEN>',
+            sender:    '2380601760_TruongHoangPhuc',
+            receiver:  '2380600781_PhanQuocHung',
+            content:   'Chào Hùng, bạn nhận được gói tin từ Web Client này không?',
+            timestamp: Date.now()
+        }, null, 2),
+
+        typing: () => JSON.stringify({
+            action:   'TYPING',
+            token:    activeToken || '<SESSION_TOKEN>',
+            sender:   '2380601760_TruongHoangPhuc',
+            receiver: 'ALL',
+            content:  'is_typing'
+        }, null, 2),
+
+        logout: () => JSON.stringify({
+            action:  'LOGOUT',
+            token:   activeToken || '<SESSION_TOKEN>',
+            sender:  '2380601760_TruongHoangPhuc',
+            content: 'logout_web'
+        }, null, 2),
+
+        custom: () => JSON.stringify({
+            action:  '',
+            token:   activeToken || '',
+            sender:  '',
+            receiver: '',
+            content: ''
+        }, null, 2)
+    };
+
+    /* Khởi tạo payload */
+    jsonPayload.value = templates.login();
+    _validateJson();
+
+    /* Template change */
+    templateSelect.addEventListener('change', () => {
+        const fn = templates[templateSelect.value];
+        if (fn) jsonPayload.value = fn();
+        _validateJson();
+    });
+
+    /* Live JSON validation */
+    jsonPayload.addEventListener('input', () => {
+        _validateJson();
+        if (templateSelect.value !== 'custom') {
+            templateSelect.value = 'custom';
         }
+    });
 
-        btnTestConnect.addEventListener('click', () => {
-            const host = document.getElementById('testHost').value.trim();
-            const port = document.getElementById('testPort').value.trim();
-            const url = `ws://${host}:${port}`;
+    /* ════════════════════════════════════════════════
+       KẾT NỐI WEBSOCKET
+    ════════════════════════════════════════════════ */
+    btnConnect.addEventListener('click', () => {
+        const host = document.getElementById('testHost').value.trim();
+        const port = document.getElementById('testPort').value.trim();
+        if (!host || !port) { alert('Vui lòng nhập Host và Port!'); return; }
+        const url = `ws://${host}:${port}`;
 
-            appendLog('sys', `Đang kết nối tới ${url}...`);
-            testConnStatus.textContent = 'Trạng thái: Đang kết nối...';
+        appendLog('sys', `Đang kết nối tới ${url}…`);
+        setStatus('connecting', 'Đang kết nối…');
+        btnConnect.disabled = true;
 
-            try {
-                testWs = new WebSocket(url);
+        try {
+            testWs = new WebSocket(url);
 
-                testWs.onopen = () => {
-                    appendLog('sys', `Kết nối thành công tới ${url}`);
-                    testConnStatus.innerHTML = '<span class="text-success fw-bold">Trạng thái: Đã kết nối</span>';
-                    btnTestConnect.disabled = true;
-                    btnTestDisconnect.disabled = false;
-                    btnSendRaw.disabled = false;
-                };
+            testWs.onopen = () => {
+                setStatus('connected', `Đã kết nối – ${url}`);
+                btnConnect.disabled    = true;
+                btnDisconnect.disabled = false;
+                btnSend.disabled       = false;
+                appendLog('sys', `✅ Kết nối WebSocket thành công: ${url}`);
+                _startPing();
+            };
 
-                testWs.onmessage = (e) => {
-                    appendLog('in', `NHẬN: ${e.data}`);
-                    try {
-                        const parsed = JSON.parse(e.data);
-                        if (parsed.action === 'LOGIN_SUCCESS' && parsed.token) {
-                            activeToken = parsed.token;
-                            appendLog('sys', `Đã tự động lưu Session Token: ${activeToken}`);
-                        }
-                    } catch (err) {}
-                };
+            testWs.onmessage = ({ data }) => {
+                statRecv++;
+                elRecv.textContent = statRecv;
+                appendLog('in', `NHẬN ← ${data}`);
 
-                testWs.onerror = (err) => {
-                    appendLog('err', 'LỖI: Kết nối WebSocket gặp sự cố.');
-                };
+                try {
+                    const parsed = JSON.parse(data);
 
-                testWs.onclose = () => {
-                    appendLog('sys', 'Đã ngắt kết nối WebSocket.');
-                    testConnStatus.textContent = 'Trạng thái: Chưa kết nối';
-                    btnTestConnect.disabled = false;
-                    btnTestDisconnect.disabled = true;
-                    btnSendRaw.disabled = true;
-                };
-            } catch (ex) {
-                appendLog('err', `Ngoại lệ: ${ex.message}`);
+                    /* Tự động lưu token */
+                    if (parsed.action === 'LOGIN_SUCCESS' && parsed.token) {
+                        activeToken = parsed.token;
+                        tokenDisplay.value = activeToken;
+                        appendLog('token', `🔑 Token đã lưu: ${activeToken}`);
+                    }
+
+                    /* Đo RTT nếu là phản hồi PING */
+                    if (parsed.action === 'ERROR' && pingTs > 0) {
+                        const rtt = Math.round(performance.now() - pingTs);
+                        elLatency.textContent = rtt;
+                        pingTs = 0;
+                    }
+                } catch (_) {}
+            };
+
+            testWs.onerror = () => {
+                appendLog('err', `❌ Lỗi WebSocket – không thể kết nối hoặc kết nối bị gián đoạn.`);
+            };
+
+            testWs.onclose = ({ code, reason }) => {
+                _stopPing();
+                setStatus('disconnected', 'Chưa kết nối');
+                btnConnect.disabled    = false;
+                btnDisconnect.disabled = true;
+                btnSend.disabled       = true;
+                appendLog('sys', `🔌 Đã ngắt kết nối (code ${code}${reason ? ` – ${reason}` : ''}).`);
+            };
+        } catch (ex) {
+            btnConnect.disabled = false;
+            setStatus('disconnected', 'Chưa kết nối');
+            appendLog('err', `Ngoại lệ: ${ex.message}`);
+        }
+    });
+
+    btnDisconnect.addEventListener('click', () => {
+        if (testWs) testWs.close(1000, 'Người dùng ngắt kết nối');
+    });
+
+    /* ════════════════════════════════════════════════
+       GỬI GÓI TIN
+    ════════════════════════════════════════════════ */
+    btnSend.addEventListener('click', () => {
+        if (!testWs || testWs.readyState !== WebSocket.OPEN) {
+            appendLog('err', 'Chưa kết nối tới Server!');
+            return;
+        }
+        const text = jsonPayload.value.trim();
+        if (!text) return;
+        try {
+            JSON.parse(text); // validate
+        } catch (e) {
+            appendLog('err', `JSON không hợp lệ: ${e.message}`);
+            return;
+        }
+        testWs.send(text);
+        statSent++;
+        elSent.textContent = statSent;
+        appendLog('out', `GỬI → ${text}`);
+    });
+
+    /* ════════════════════════════════════════════════
+       HELPER BUTTONS
+    ════════════════════════════════════════════════ */
+    document.getElementById('btnFormatJson').addEventListener('click', () => {
+        try {
+            const parsed = JSON.parse(jsonPayload.value);
+            jsonPayload.value = JSON.stringify(parsed, null, 2);
+            _validateJson();
+        } catch (e) {
+            appendLog('err', `Không thể format – JSON không hợp lệ: ${e.message}`);
+        }
+    });
+
+    document.getElementById('btnCopyJson').addEventListener('click', () => {
+        navigator.clipboard?.writeText(jsonPayload.value)
+            .then(() => appendLog('sys', 'Đã copy JSON vào clipboard.'))
+            .catch(() => appendLog('err', 'Không thể copy – trình duyệt chặn clipboard.'));
+    });
+
+    document.getElementById('btnClearPayload').addEventListener('click', () => {
+        jsonPayload.value = '';
+        _validateJson();
+    });
+
+    document.getElementById('btnClearLog').addEventListener('click', () => {
+        logBox.innerHTML = '';
+    });
+
+    document.getElementById('btnExportLog').addEventListener('click', () => {
+        const lines = [...logBox.querySelectorAll('.log-entry')].map(el => el.textContent.trim());
+        if (lines.length === 0) { alert('Chưa có log để lưu.'); return; }
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+        const a    = Object.assign(document.createElement('a'), {
+            href: URL.createObjectURL(blob),
+            download: `ws-log-${Date.now()}.txt`
+        });
+        a.click();
+        URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('btnCopyToken').addEventListener('click', () => {
+        if (!activeToken) { appendLog('err', 'Chưa có token. Thực hiện LOGIN trước.'); return; }
+        navigator.clipboard?.writeText(activeToken)
+            .then(() => appendLog('sys', 'Đã copy token vào clipboard.'));
+    });
+
+    /* ════════════════════════════════════════════════
+       PING / RTT
+    ════════════════════════════════════════════════ */
+    function _startPing() {
+        _stopPing();
+        pingTimer = setInterval(() => {
+            if (testWs?.readyState === WebSocket.OPEN && activeToken) {
+                pingTs = performance.now();
+                testWs.send(JSON.stringify({
+                    action: 'PING',
+                    sender: '2380601760_TruongHoangPhuc',
+                    token:  activeToken
+                }));
             }
-        });
+        }, 10000);
+    }
+    function _stopPing() {
+        clearInterval(pingTimer);
+        pingTimer = null;
+        pingTs    = 0;
+    }
 
-        btnTestDisconnect.addEventListener('click', () => {
-            if (testWs) testWs.close();
-        });
+    /* ════════════════════════════════════════════════
+       LOG
+    ════════════════════════════════════════════════ */
+    function appendLog(type, text) {
+        const ts  = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+        const p   = document.createElement('p');
+        p.className = `log-entry log-${type}`;
+        // Truncate nếu dài > 2000 ký tự để tránh treo trang
+        const display = text.length > 2000 ? text.substring(0, 2000) + ' … [truncated]' : text;
+        p.innerHTML = `<span class="log-ts">[${ts}]</span> ${escHtml(display)}`;
+        logBox.appendChild(p);
+        logBox.scrollTop = logBox.scrollHeight;
+    }
 
-        btnSendRaw.addEventListener('click', () => {
-            if (!testWs || testWs.readyState !== WebSocket.OPEN) {
-                alert('Chưa kết nối!');
-                return;
-            }
-            try {
-                const text = jsonPayload.value.trim();
-                JSON.parse(text); // validate JSON syntax
-                testWs.send(text);
-                appendLog('out', `GỬI: ${text}`);
-            } catch (e) {
-                alert('Chuỗi không đúng cú pháp JSON hợp lệ: ' + e.message);
-            }
-        });
+    function escHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
 
-        document.getElementById('btnClearLog').addEventListener('click', () => {
-            logBox.innerHTML = '';
-        });
-    </script>
+    /* ════════════════════════════════════════════════
+       JSON VALIDATION
+    ════════════════════════════════════════════════ */
+    function _validateJson() {
+        const v = jsonPayload.value.trim();
+        if (!v) { jsonValidLabel.innerHTML = ''; return; }
+        try {
+            JSON.parse(v);
+            jsonValidLabel.innerHTML = '<span class="badge bg-success" style="font-size:0.68rem;">✓ JSON hợp lệ</span>';
+            jsonPayload.style.borderColor = '#22c55e';
+        } catch (e) {
+            jsonValidLabel.innerHTML = `<span class="badge bg-danger" style="font-size:0.68rem;">✗ ${escHtml(e.message)}</span>`;
+            jsonPayload.style.borderColor = '#ef4444';
+        }
+    }
+
+    /* ════════════════════════════════════════════════
+       STATUS BADGE
+    ════════════════════════════════════════════════ */
+    function setStatus(state, text) {
+        statusBadge.className = `conn-badge ${state}`;
+        statusText.textContent = text;
+    }
+
+})();
+</script>
 </body>
 </html>
