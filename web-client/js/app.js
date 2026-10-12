@@ -1,62 +1,102 @@
+/**
+ * app.js – Tầng Giao diện (Presentation Layer)
+ * ===============================================================
+ * Xử lý toàn bộ tương tác DOM, kết nối WebSocketClientManager,
+ * quản lý trạng thái UI và hiển thị tin nhắn.
+ *
+ * Các vấn đề đã xử lý:
+ *  ✅ Sửa lỗi tin nhắn chat nhóm bị lặp đôi (duplicate)
+ *  ✅ Debounce gửi trạng thái TYPING (tối đa 1 gói / 2.5s)
+ *  ✅ Lịch sử tin nhắn tách biệt theo target (ALL / từng user)
+ *  ✅ Số tin nhắn chưa đọc trên sidebar
+ *  ✅ Chế độ Demo không cần Server
+ *  ✅ Hiển thị trạng thái kết nối realtime
+ *  ✅ Xuất lịch sử chat ra file .txt
+ *
+ * Người thực hiện: Trương Hoàng Phúc – MSSV 2380601760
+ * Môn: Lập Trình Mạng – Nhóm 11
+ */
 document.addEventListener('DOMContentLoaded', () => {
+
+    /* ════════════════════════════════════════════════
+       0. KHỞI TẠO
+    ════════════════════════════════════════════════ */
     const wsManager = new WebSocketClientManager();
 
-    // DOM Elements
-    const loginScreen = document.getElementById('loginScreen');
-    const chatScreen = document.getElementById('chatScreen');
-    const loginForm = document.getElementById('loginForm');
-    const usernameInput = document.getElementById('usernameInput');
-    const serverIpInput = document.getElementById('serverIp');
+    /* ── DOM References ── */
+    const loginScreen     = document.getElementById('loginScreen');
+    const chatScreen      = document.getElementById('chatScreen');
+    const loginForm       = document.getElementById('loginForm');
+    const usernameInput   = document.getElementById('usernameInput');
+    const serverIpInput   = document.getElementById('serverIp');
     const serverPortInput = document.getElementById('serverPort');
-    const btnLogin = document.getElementById('btnLogin');
-    const loginStatus = document.getElementById('loginStatus');
+    const chkDemo         = document.getElementById('chkDemo');
+    const btnLogin        = document.getElementById('btnLogin');
+    const loginStatus     = document.getElementById('loginStatus');
 
-    const displayMyName = document.getElementById('displayMyName');
-    const myAvatar = document.getElementById('myAvatar');
-    const btnLogout = document.getElementById('btnLogout');
-    const userList = document.getElementById('userList');
-    const searchUser = document.getElementById('searchUser');
+    const displayMyName   = document.getElementById('displayMyName');
+    const myAvatar        = document.getElementById('myAvatar');
+    const btnLogout       = document.getElementById('btnLogout');
+    const userList        = document.getElementById('userList');
+    const searchUser      = document.getElementById('searchUser');
 
-    const chatHeaderTitle = document.getElementById('chatHeaderTitle');
+    const chatHeaderTitle  = document.getElementById('chatHeaderTitle');
     const chatHeaderAvatar = document.getElementById('chatHeaderAvatar');
-    const typingIndicator = document.getElementById('typingIndicator');
-    const chatMessages = document.getElementById('chatMessages');
-    const messageForm = document.getElementById('messageForm');
-    const messageInput = document.getElementById('messageInput');
-    const btnToggleSound = document.getElementById('btnToggleSound');
-    const soundIcon = document.getElementById('soundIcon');
-    const btnExportChat = document.getElementById('btnExportChat');
-    const pingValue = document.getElementById('pingValue');
-    const tokenStatus = document.getElementById('tokenStatus');
-    const emojiBar = document.getElementById('emojiBar');
+    const typingIndicator  = document.getElementById('typingIndicator');
+    const chatMessages     = document.getElementById('chatMessages');
+    const messageForm      = document.getElementById('messageForm');
+    const messageInput     = document.getElementById('messageInput');
+    const btnToggleSound   = document.getElementById('btnToggleSound');
+    const soundIcon        = document.getElementById('soundIcon');
+    const btnExportChat    = document.getElementById('btnExportChat');
+    const pingValue        = document.getElementById('pingValue');
+    const tokenStatus      = document.getElementById('tokenStatus');
+    const emojiBar         = document.getElementById('emojiBar');
+    const wsStatusDot      = document.getElementById('wsStatusDot');
+    const wsStatusText     = document.getElementById('wsStatusText');
 
-    let activeTarget = 'ALL';
-    let typingTimer = null;
-    let soundEnabled = true;
-    let chatHistory = [];
+    /* ── Trạng thái ứng dụng ── */
+    let activeTarget   = 'ALL';           // target đang chọn trong sidebar
+    let soundEnabled   = true;
 
-    // Notification Sound Synthesizer via Web Audio API
+    // Lưu lịch sử riêng theo từng target để tránh duplicate & hỗ trợ lọc
+    // chatLog[target] = [ {msg object}, ... ]
+    const chatLog = { ALL: [] };
+
+    // Số tin chưa đọc [target] = count
+    const unreadCounts = {};
+
+    // Debounce TYPING
+    let typingDebounceTimer = null;
+    const TYPING_DEBOUNCE_MS = 2500;
+
+    // Typing display timer
+    let typingDisplayTimer = null;
+
+    /* ════════════════════════════════════════════════
+       1. ÂM THANH THÔNG BÁO (Web Audio API)
+    ════════════════════════════════════════════════ */
     function playNotificationSound() {
         if (!soundEnabled) return;
         try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
+            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+            const osc  = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+            osc.frequency.setValueAtTime(587.33, ctx.currentTime);      // D5
             osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
             gain.gain.setValueAtTime(0.15, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start();
-            osc.stop(ctx.currentTime + 0.25);
-        } catch (e) {
-            // Audio context may be restricted before interaction
-        }
+            osc.stop(ctx.currentTime + 0.28);
+        } catch (_) {/* AudioContext bị khóa trước khi có tương tác người dùng */}
     }
 
-    // Toggle Sound Button
+    /* ════════════════════════════════════════════════
+       2. ĐIỀU KHIỂN NÚT ÂM THANH
+    ════════════════════════════════════════════════ */
     if (btnToggleSound) {
         btnToggleSound.addEventListener('click', () => {
             soundEnabled = !soundEnabled;
@@ -70,7 +110,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Quick Emoji Bar Handler
+    /* ════════════════════════════════════════════════
+       3. THANH EMOJI NHANH
+    ════════════════════════════════════════════════ */
     if (emojiBar) {
         emojiBar.querySelectorAll('.emoji-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -83,210 +125,405 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Export Chat History
+    /* ════════════════════════════════════════════════
+       4. XUẤT LỊCH SỬ CHAT
+    ════════════════════════════════════════════════ */
     if (btnExportChat) {
         btnExportChat.addEventListener('click', () => {
-            if (chatHistory.length === 0) {
+            const allMessages = Object.values(chatLog).flat();
+            allMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            if (allMessages.length === 0) {
                 alert('Chưa có tin nhắn nào để xuất lịch sử!');
                 return;
             }
-            const logContent = chatHistory.map(m => `[${new Date(m.timestamp).toLocaleString()}] [${m.sender} -> ${m.receiver}]: ${m.content}`).join('\n');
-            const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
+            const lines = allMessages.map(m => {
+                const t = new Date(m.timestamp || Date.now()).toLocaleString('vi-VN');
+                const type = m.action === 'CHAT_GROUP' ? '[Nhóm]' : '[Cá nhân]';
+                return `[${t}] ${type} ${m.sender} → ${m.receiver}: ${m.content}`;
+            });
+            const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
             a.download = `chat-log-${Date.now()}.txt`;
             a.click();
             URL.revokeObjectURL(url);
         });
     }
 
-    // Login Form Submit
+    /* ════════════════════════════════════════════════
+       5. ĐĂNG NHẬP
+    ════════════════════════════════════════════════ */
     loginForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const username = usernameInput.value.trim();
-        const host = serverIpInput.value.trim();
-        const port = serverPortInput.value.trim();
+        const host     = serverIpInput.value.trim();
+        const port     = serverPortInput.value.trim();
+        const demo     = chkDemo?.checked || false;
 
-        if (!username) return;
+        if (!username) {
+            setLoginStatus('Vui lòng nhập tên người dùng!', 'danger');
+            return;
+        }
 
         btnLogin.disabled = true;
-        loginStatus.classList.remove('display-none');
-        loginStatus.textContent = 'Đang kết nối tới WebSocket Gateway...';
+        setLoginStatus(demo
+            ? '⚡ Đang khởi động chế độ Demo (offline)…'
+            : `🔗 Đang kết nối tới ws://${host}:${port}…`, 'info');
 
-        wsManager.connect(host, port, username);
+        wsManager.connect(host, port, username, demo);
     });
 
-    // WebSocket Callbacks
+    function setLoginStatus(msg, type = 'info') {
+        loginStatus.className = `mt-3 small text-${type}`;
+        loginStatus.textContent = msg;
+        loginStatus.classList.remove('display-none');
+    }
+
+    /* ════════════════════════════════════════════════
+       6. WEBSOCKET CALLBACKS
+    ════════════════════════════════════════════════ */
+
+    /* ── 6a. Trạng thái kết nối ── */
+    wsManager.onStatusChange = (status) => {
+        if (!wsStatusDot || !wsStatusText) return;
+        wsStatusDot.className = 'status-dot';
+        switch (status) {
+            case 'connecting':
+                wsStatusDot.classList.add('connecting');
+                wsStatusText.textContent = 'Đang kết nối…';
+                break;
+            case 'connected':
+                wsStatusDot.classList.add('online');
+                wsStatusText.textContent = 'Đã kết nối';
+                break;
+            case 'disconnected':
+                wsStatusDot.classList.add('offline');
+                wsStatusText.textContent = 'Mất kết nối';
+                break;
+        }
+    };
+
+    /* ── 6b. Đăng nhập thành công ── */
     wsManager.onLoginSuccess = (msg) => {
         loginScreen.classList.add('display-none');
         chatScreen.classList.remove('display-none');
+
         displayMyName.textContent = wsManager.username;
-        myAvatar.textContent = wsManager.username.charAt(0).toUpperCase();
+        myAvatar.textContent      = wsManager.username.charAt(0).toUpperCase();
+
         if (tokenStatus && wsManager.token) {
-            tokenStatus.textContent = `Token: ${wsManager.token.substring(0, 8)}...`;
+            tokenStatus.textContent = `Token: ${wsManager.token.substring(0, 8)}…`;
         }
+
+        appendSystemMessage('Đã kết nối. Chào mừng ' + wsManager.username + ' 👋');
     };
 
+    /* ── 6c. Đo độ trễ ── */
     wsManager.onLatencyUpdate = (latency) => {
-        if (pingValue) {
-            pingValue.textContent = `${latency} ms`;
-        }
+        if (!pingValue) return;
+        pingValue.textContent = `${latency} ms`;
+        // Màu theo ngưỡng
+        const badge = pingValue.parentElement;
+        if (!badge) return;
+        badge.classList.remove('text-success', 'text-warning', 'text-danger', 'text-info');
+        if (latency < 50)       badge.classList.add('text-success');
+        else if (latency < 150) badge.classList.add('text-warning');
+        else                    badge.classList.add('text-danger');
     };
 
+    /* ── 6d. Cập nhật danh sách người dùng online ── */
     wsManager.onUserListUpdated = (users) => {
         renderUserList(users);
     };
 
+    /* ── 6e. Nhận tin nhắn ── */
     wsManager.onMessageReceived = (msg) => {
-        appendMessage(msg);
-        if (msg.sender !== wsManager.username) {
+        // ── FIX: Tránh duplicate tin nhắn ──
+        // Server broadcast CHAT_GROUP về cho TẤT CẢ kể cả người gửi.
+        // app.js đã tự append tin của mình trong messageForm.submit → bỏ qua ở đây.
+        // Trường _demo=true là echo từ Demo mode → cũng bỏ qua (đã append thủ công).
+        if (msg._self || msg._demo) return;
+
+        const key = _chatKey(msg);
+        if (!chatLog[key]) chatLog[key] = [];
+        chatLog[key].push(msg);
+
+        if (key === activeTarget) {
+            renderBubble(msg, false);
+        } else {
+            // Tin đến từ target không đang xem → tăng badge chưa đọc
+            unreadCounts[key] = (unreadCounts[key] || 0) + 1;
+            _updateUnreadBadge(key);
+            playNotificationSound();
+        }
+
+        // Chỉ phát âm thanh nếu tin là từ người khác VÀ đang ở target này
+        if (key === activeTarget && msg.sender !== wsManager.username) {
             playNotificationSound();
         }
     };
 
+    /* ── 6f. Trạng thái đang gõ ── */
     wsManager.onTyping = (msg) => {
-        if (msg.sender !== wsManager.username) {
-            typingIndicator.textContent = `${msg.sender} đang nhập tin nhắn...`;
-            clearTimeout(typingTimer);
-            typingTimer = setTimeout(() => {
-                typingIndicator.textContent = '';
-            }, 2500);
-        }
+        if (msg.sender === wsManager.username) return;
+        typingIndicator.textContent = `${msg.sender} đang nhập tin nhắn…`;
+        clearTimeout(typingDisplayTimer);
+        typingDisplayTimer = setTimeout(() => {
+            typingIndicator.textContent = '';
+        }, 3000);
     };
 
+    /* ── 6g. Lỗi ── */
     wsManager.onError = (errMsg) => {
         btnLogin.disabled = false;
-        loginStatus.classList.remove('display-none');
-        loginStatus.className = 'mt-3 small text-danger';
-        loginStatus.textContent = `Lỗi: ${errMsg}`;
+        setLoginStatus(`❌ Lỗi: ${errMsg}`, 'danger');
     };
 
+    /* ── 6h. Ngắt kết nối ── */
     wsManager.onClose = () => {
         loginScreen.classList.remove('display-none');
         chatScreen.classList.add('display-none');
         btnLogin.disabled = false;
-        loginStatus.textContent = 'Đã ngắt kết nối.';
+        setLoginStatus('🔌 Đã ngắt kết nối khỏi Server.', 'secondary');
+        // Reset state
+        activeTarget = 'ALL';
+        Object.keys(chatLog).forEach(k => { chatLog[k] = []; });
+        Object.keys(unreadCounts).forEach(k => { delete unreadCounts[k]; });
+        chatMessages.innerHTML = '';
     };
 
-    // Render Online User List
+    /* ════════════════════════════════════════════════
+       7. SIDEBAR – DANH SÁCH NGƯỜI DÙNG
+    ════════════════════════════════════════════════ */
+
+    /**
+     * Render (hoặc cập nhật) danh sách người dùng online trên sidebar.
+     * @param {string[]} users
+     */
     function renderUserList(users) {
-        // Keep ALL item
+        // Build set mới
+        const others = users.filter(u => u !== wsManager.username);
+
         userList.innerHTML = `
-            <div class="user-item p-2 rounded mb-1 d-flex align-items-center gap-2 ${activeTarget === 'ALL' ? 'active' : ''}" data-target="ALL">
-                <div class="avatar bg-gradient-primary text-white rounded-circle"><i class="fa-solid fa-users"></i></div>
+            <div class="user-item p-2 rounded mb-1 d-flex align-items-center gap-2 ${activeTarget === 'ALL' ? 'active' : ''}"
+                 data-target="ALL">
+                <div class="avatar bg-gradient-primary text-white rounded-circle">
+                    <i class="fa-solid fa-users"></i>
+                </div>
                 <div class="flex-grow-1">
                     <div class="fw-semibold">TẤT CẢ (ALL)</div>
                     <div class="small text-muted">Chat nhóm Broadcast</div>
                 </div>
-            </div>
-        `;
+                ${_unreadBadgeHtml('ALL')}
+            </div>`;
 
-        users.forEach(u => {
-            if (u !== wsManager.username) {
-                const item = document.createElement('div');
-                item.className = `user-item p-2 rounded mb-1 d-flex align-items-center gap-2 ${activeTarget === u ? 'active' : ''}`;
-                item.setAttribute('data-target', u);
-                item.innerHTML = `
-                    <div class="avatar bg-secondary text-white rounded-circle fw-bold">${u.charAt(0).toUpperCase()}</div>
-                    <div class="flex-grow-1">
-                        <div class="fw-semibold">${u}</div>
-                        <div class="small text-success"><i class="fa-solid fa-circle me-1" style="font-size: 8px;"></i>Online</div>
+        others.forEach(u => {
+            const item = document.createElement('div');
+            item.className = `user-item p-2 rounded mb-1 d-flex align-items-center gap-2 ${activeTarget === u ? 'active' : ''}`;
+            item.setAttribute('data-target', u);
+            item.innerHTML = `
+                <div class="avatar bg-secondary text-white rounded-circle fw-bold">${u.charAt(0).toUpperCase()}</div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold text-truncate" style="max-width:160px;">${_escHtml(u)}</div>
+                    <div class="small d-flex align-items-center gap-1">
+                        <span class="status-dot online"></span>
+                        <span class="text-success">Online</span>
                     </div>
-                `;
-                userList.appendChild(item);
-            }
+                </div>
+                ${_unreadBadgeHtml(u)}`;
+            userList.appendChild(item);
         });
 
-        // Add Click event to items
-        document.querySelectorAll('.user-item').forEach(el => {
-            el.addEventListener('click', () => {
-                document.querySelectorAll('.user-item').forEach(i => i.classList.remove('active'));
-                el.classList.add('active');
-                activeTarget = el.getAttribute('data-target');
-
-                if (activeTarget === 'ALL') {
-                    chatHeaderTitle.textContent = 'Phòng Chat Nhóm (ALL)';
-                    chatHeaderAvatar.innerHTML = '<i class="fa-solid fa-users"></i>';
-                } else {
-                    chatHeaderTitle.textContent = `Chat 1-1 với ${activeTarget}`;
-                    chatHeaderAvatar.innerHTML = activeTarget.charAt(0).toUpperCase();
-                }
-            });
+        // Gắn sự kiện click
+        userList.querySelectorAll('.user-item').forEach(el => {
+            el.addEventListener('click', () => _switchTarget(el.getAttribute('data-target')));
         });
     }
 
-    // Send Message
+    /** Chuyển target chat (sidebar click). */
+    function _switchTarget(target) {
+        if (activeTarget === target) return;
+        activeTarget = target;
+
+        // Cập nhật active class sidebar
+        userList.querySelectorAll('.user-item').forEach(el => {
+            el.classList.toggle('active', el.getAttribute('data-target') === target);
+        });
+
+        // Reset unread
+        if (unreadCounts[target]) {
+            delete unreadCounts[target];
+            _updateUnreadBadge(target);
+        }
+
+        // Cập nhật header
+        if (target === 'ALL') {
+            chatHeaderTitle.textContent = 'Phòng Chat Nhóm (ALL)';
+            chatHeaderAvatar.innerHTML  = '<i class="fa-solid fa-users"></i>';
+            chatHeaderAvatar.className  = 'avatar bg-gradient-primary text-white rounded-circle fs-5';
+        } else {
+            chatHeaderTitle.textContent = `Chat 1-1 với ${target}`;
+            chatHeaderAvatar.textContent = target.charAt(0).toUpperCase();
+            chatHeaderAvatar.className   = 'avatar bg-secondary text-white rounded-circle fw-bold';
+        }
+
+        // Render lại lịch sử của target đó
+        chatMessages.innerHTML = '';
+        appendSystemMessage(`Bạn đang xem cuộc trò chuyện với: ${target === 'ALL' ? 'Tất cả (ALL)' : target}`);
+        const history = chatLog[target] || [];
+        history.forEach(m => renderBubble(m, false));
+    }
+
+    /** Tìm key lưu lịch sử: với CHAT_SINGLE, key = tên partner; với GROUP = 'ALL'. */
+    function _chatKey(msg) {
+        if (msg.action === 'CHAT_GROUP') return 'ALL';
+        // CHAT_SINGLE: key = partner (người kia)
+        if (msg.sender === wsManager.username) return msg.receiver;
+        return msg.sender;
+    }
+
+    /** Cập nhật badge số chưa đọc trên sidebar item. */
+    function _updateUnreadBadge(target) {
+        const el = userList.querySelector(`[data-target="${CSS.escape(target)}"] .unread-badge`);
+        const count = unreadCounts[target] || 0;
+        if (el) {
+            if (count > 0) {
+                el.textContent = count > 99 ? '99+' : String(count);
+                el.classList.remove('display-none');
+            } else {
+                el.classList.add('display-none');
+            }
+        }
+    }
+
+    function _unreadBadgeHtml(target) {
+        const count = unreadCounts[target] || 0;
+        return `<span class="unread-badge ${count > 0 ? '' : 'display-none'}">${count > 99 ? '99+' : count}</span>`;
+    }
+
+    /* ════════════════════════════════════════════════
+       8. GỬI TIN NHẮN
+    ════════════════════════════════════════════════ */
     messageForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = messageInput.value.trim();
-        if (!text) return;
+        if (!text || !wsManager.isConnected) return;
 
+        // Gửi lên Server / Demo
         wsManager.sendChatMessage(activeTarget, text);
-        
-        // Append sent message locally for immediate UI update
+
+        // Append ngay lập tức cho người gửi (không chờ echo từ Server)
+        // Đánh dấu _self=true để callback onMessageReceived bỏ qua
         const selfMsg = {
-            sender: wsManager.username,
-            receiver: activeTarget,
-            content: text,
-            action: activeTarget === 'ALL' ? 'CHAT_GROUP' : 'CHAT_SINGLE',
+            _self:     true,
+            action:    activeTarget === 'ALL' ? 'CHAT_GROUP' : 'CHAT_SINGLE',
+            sender:    wsManager.username,
+            receiver:  activeTarget,
+            content:   text,
             timestamp: Date.now()
         };
-        appendMessage(selfMsg);
+        // Lưu vào log
+        const key = _chatKey(selfMsg);
+        if (!chatLog[key]) chatLog[key] = [];
+        chatLog[key].push(selfMsg);
 
+        renderBubble(selfMsg, false);
         messageInput.value = '';
     });
 
-    // Send Typing Event on Input
+    /* ════════════════════════════════════════════════
+       9. TRẠNG THÁI ĐANG GÕ (Debounce)
+    ════════════════════════════════════════════════ */
     messageInput.addEventListener('input', () => {
-        if (messageInput.value.length > 0) {
+        if (!wsManager.isConnected || messageInput.value.length === 0) return;
+
+        // Debounce: chỉ gửi TYPING sau khi người dùng dừng gõ đủ thời gian,
+        // hoặc ngay lập tức nếu lần đầu (timer chưa chạy).
+        if (!typingDebounceTimer) {
             wsManager.sendTypingStatus(activeTarget);
         }
+        clearTimeout(typingDebounceTimer);
+        typingDebounceTimer = setTimeout(() => {
+            typingDebounceTimer = null;
+        }, TYPING_DEBOUNCE_MS);
     });
 
-    // Filter users on search input
+    /* ════════════════════════════════════════════════
+       10. BỘ LỌC TÌM KIẾM USER TRÊN SIDEBAR
+    ════════════════════════════════════════════════ */
     if (searchUser) {
         searchUser.addEventListener('input', () => {
-            const query = searchUser.value.trim().toLowerCase();
-            document.querySelectorAll('#userList .user-item').forEach(item => {
-                const target = item.getAttribute('data-target');
-                if (target === 'ALL') {
-                    item.style.display = '';
-                } else {
-                    item.style.display = target.toLowerCase().includes(query) ? '' : 'none';
-                }
+            const q = searchUser.value.trim().toLowerCase();
+            userList.querySelectorAll('.user-item').forEach(item => {
+                const t = (item.getAttribute('data-target') || '').toLowerCase();
+                item.style.display = (t === 'all' || t.includes(q)) ? '' : 'none';
             });
         });
     }
 
-    // Append Message to UI
-    function appendMessage(msg) {
-        chatHistory.push(msg);
-        const isSelf = msg.sender === wsManager.username;
-        const timeStr = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const bubble = document.createElement('div');
-        bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
+    /* ════════════════════════════════════════════════
+       11. ĐĂNG XUẤT
+    ════════════════════════════════════════════════ */
+    if (btnLogout) {
+        btnLogout.addEventListener('click', () => {
+            wsManager.disconnect();
+        });
+    }
 
-        const senderLabel = isSelf ? 'Bạn' : msg.sender;
+    /* ════════════════════════════════════════════════
+       12. RENDER TIN NHẮN
+    ════════════════════════════════════════════════ */
+
+    /**
+     * Tạo bubble tin nhắn và chèn vào khung chat.
+     * @param {Object} msg
+     * @param {boolean} [prepend=false] – Thêm lên đầu (dành cho load lịch sử ngược)
+     */
+    function renderBubble(msg, prepend = false) {
+        const isSelf  = msg.sender === wsManager.username;
+        const timeStr = new Date(msg.timestamp || Date.now())
+            .toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const typeLabel = msg.action === 'CHAT_GROUP' ? '[Nhóm]' : '[Cá nhân]';
 
+        const bubble = document.createElement('div');
+        bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
         bubble.innerHTML = `
-            <div class="fw-bold small mb-1">${senderLabel} <span class="opacity-50 font-monospace" style="font-size:10px">${typeLabel}</span></div>
-            <div>${escapeHtml(msg.content)}</div>
-            <div class="msg-meta text-end">${timeStr}</div>
-        `;
+            <div class="msg-sender">${isSelf ? 'Bạn' : _escHtml(msg.sender)}
+                <span class="opacity-50 font-monospace" style="font-size:10px;font-weight:400"> ${typeLabel}</span>
+            </div>
+            <div class="msg-text">${_escHtml(msg.content)}</div>
+            <div class="msg-meta">${timeStr}</div>`;
 
-        chatMessages.appendChild(bubble);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        if (prepend && chatMessages.firstChild) {
+            chatMessages.insertBefore(bubble, chatMessages.firstChild);
+        } else {
+            chatMessages.appendChild(bubble);
+            // Auto-scroll xuống cuối
+            requestAnimationFrame(() => {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        }
     }
 
-    function escapeHtml(text) {
+    /** Thêm thông báo hệ thống (dòng xám giữa màn hình chat). */
+    function appendSystemMessage(text) {
         const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        div.className = 'system-message text-center my-2';
+        div.innerHTML = `<span class="badge bg-secondary opacity-75">${_escHtml(text)}</span>`;
+        chatMessages.appendChild(div);
+        requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
     }
 
-    btnLogout.addEventListener('click', () => {
-        wsManager.disconnect();
-    });
-});
+    /* ════════════════════════════════════════════════
+       13. HELPER
+    ════════════════════════════════════════════════ */
+
+    /** Escape HTML để chống XSS. */
+    function _escHtml(text) {
+        const d = document.createElement('div');
+        d.textContent = String(text ?? '');
+        return d.innerHTML;
+    }
+
+}); // end DOMContentLoaded
