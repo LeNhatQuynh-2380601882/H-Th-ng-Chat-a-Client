@@ -12,7 +12,7 @@
 | MSSV | Họ và Tên | Vai trò | Công việc đã thực hiện | Merge Requests / PR |
 | :--- | :--- | :--- | :--- | :--- |
 | **2380601882** | **Lê Nhật Quỳnh** | Nhóm trưởng | Khởi tạo khung sườn dự án, Xây dựng Core Server (TCP Socket & WebSocket Gateway), C# WinForms Desktop Client, HTML/CSS/JS Web Client | !1 |
-| **2380600781** | **Phan Quốc Hùng** | Thành viên | Chi tiết công việc sẽ được phân công sau khi duyệt khung sườn | - |
+| **2380600781** | **Phan Quốc Hùng** | Thành viên 1 – Desktop Client | Phát triển Desktop Client C# WinForms với giao diện Login/Chat; xây dựng kết nối TCP bằng TcpClient và NetworkStream; xử lý JSON, framing \n và UTF-8; triển khai chat nhóm, chat riêng, user online, trạng thái Typing; xử lý Logout, mất kết nối và kiểm thử nhiều Client đồng thời. | !2 |
 | **2380601760** | **Trương Hoàng Phúc** | Thành viên | Xây dựng giao diện Web Chat Client (HTML5, CSS3, Bootstrap 5), lập trình WebSocket Client Native kết nối Gateway, xử lý đóng/mở gói JSON và kiểm thử liên nền tảng | !3 |
 
 ---

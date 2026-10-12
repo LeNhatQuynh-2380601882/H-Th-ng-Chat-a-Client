@@ -84,6 +84,17 @@ public class WebSocketGateway extends WebSocketServer {
                 }
                 break;
 
+            case FILE_TRANSFER:
+                if ("ALL".equalsIgnoreCase(msg.getReceiver())) {
+                    clientManager.broadcastMessage(msg);
+                } else {
+                    boolean sent = clientManager.sendDirectMessage(msg);
+                    if (!sent) {
+                        sendError(conn, "Người nhận '" + msg.getReceiver() + "' không online.");
+                    }
+                }
+                break;
+
             case LOGOUT:
                 clientManager.removeWebClient(conn);
                 break;
