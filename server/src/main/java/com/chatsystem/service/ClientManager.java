@@ -71,7 +71,8 @@ public class ClientManager {
         }
         if (usernameToRemove != null) {
             webClients.remove(usernameToRemove);
-            sessionTokens.values().removeIf(val -> val.equals(usernameToRemove));
+            final String targetUser = usernameToRemove;
+            sessionTokens.values().removeIf(val -> val.equals(targetUser));
             broadcastUserList();
         }
     }

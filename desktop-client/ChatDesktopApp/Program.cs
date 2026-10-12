@@ -6,6 +6,9 @@ namespace ChatDesktopApp
 {
     static class Program
     {
+        /// <summary>
+        /// Entry point chính của ứng dụng Desktop Client.
+        /// </summary>
         [STAThread]
         static void Main()
         {
