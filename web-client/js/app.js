@@ -12,6 +12,8 @@
  *  ✅ Chế độ Demo không cần Server
  *  ✅ Hiển thị trạng thái kết nối realtime
  *  ✅ Xuất lịch sử chat ra file .txt
+ *  ✅ Gửi / nhận tệp tin và hình ảnh (FILE_TRANSFER – Base64, tối đa 5MB)
+ *  ✅ Tự động nhận diện và render hyperlink URL trong tin nhắn
  *
  * Người thực hiện: Trương Hoàng Phúc – MSSV 2380601760
  * Môn: Lập Trình Mạng – Nhóm 11
@@ -140,8 +142,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const lines = allMessages.map(m => {
                 const t = new Date(m.timestamp || Date.now()).toLocaleString('vi-VN');
-                const type = m.action === 'CHAT_GROUP' ? '[Nhóm]' : '[Cá nhân]';
-                return `[${t}] ${type} ${m.sender} → ${m.receiver}: ${m.content}`;
+                let type = '[Cá nhân]';
+                if (m.action === 'CHAT_GROUP') type = '[Nhóm]';
+                else if (m.action === 'FILE_TRANSFER') type = '[File/Ảnh]';
+                let content = m.content;
+                if (m.action === 'FILE_TRANSFER') {
+                    try {
+                        const p = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                        content = p.fileName ? `[File: ${p.fileName}, ${p.fileSize ? (p.fileSize / 1024).toFixed(1) + ' KB' : ''}]` : m.content;
+                    } catch (_) {}
+                }
+                return `[${t}] ${type} ${m.sender} → ${m.receiver}: ${content}`;
             });
             const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
             const url  = URL.createObjectURL(blob);
@@ -398,10 +409,12 @@ document.addEventListener('DOMContentLoaded', () => {
         history.forEach(m => renderBubble(m, false));
     }
 
-    /** Tìm key lưu lịch sử: với CHAT_SINGLE, key = tên partner; với GROUP = 'ALL'. */
+    /** Tìm key lưu lịch sử: với CHAT_GROUP / FILE_TRANSFER-ALL = 'ALL', CHAT_SINGLE/FILE_TRANSFER-1v1 = tên partner. */
     function _chatKey(msg) {
         if (msg.action === 'CHAT_GROUP') return 'ALL';
-        // CHAT_SINGLE: key = partner (người kia)
+        // FILE_TRANSFER gửi nhóm
+        if (msg.action === 'FILE_TRANSFER' && msg.receiver === 'ALL') return 'ALL';
+        // CHAT_SINGLE hoặc FILE_TRANSFER 1-1: key = partner (người kia)
         if (msg.sender === wsManager.username) return msg.receiver;
         return msg.sender;
     }
