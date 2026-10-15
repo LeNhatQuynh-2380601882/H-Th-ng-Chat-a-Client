@@ -257,6 +257,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // app.js đã tự append tin của mình trong messageForm.submit → bỏ qua ở đây.
         // Trường _demo=true là echo từ Demo mode → cũng bỏ qua (đã append thủ công).
         if (msg._self || msg._demo) return;
+        // Server thật broadcast lại cho cả người gửi nhưng KHÔNG có cờ _self → lọc theo sender.
+        if (msg.sender === wsManager.username) return;
 
         const key = _chatKey(msg);
         if (!chatLog[key]) chatLog[key] = [];
@@ -280,6 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ── 6f. Nhận tệp tin / hình ảnh (FILE_TRANSFER) ── */
     wsManager.onFileReceived = (msg) => {
         if (msg._self || msg._demo) return;
+        if (msg.sender === wsManager.username) return; // echo broadcast của chính mình
 
         const key = _chatKey(msg);
         if (!chatLog[key]) chatLog[key] = [];
@@ -507,10 +510,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /* ── Đính kèm gửi File / Hình ảnh ── */
+    /* ════════════════════════════════════════════════
+       11b. GỬI FILE / HÌNH ẢNH
+       – Nút 📎 (chọn nhiều tệp), dán ảnh Ctrl+V, kéo-thả vào khung chat
+    ════════════════════════════════════════════════ */
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;               // 5MB – đồng bộ với Desktop Client
+    const IMAGE_EXT_RE  = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+    /**
+     * Đọc 1 tệp → Base64 → gửi FILE_TRANSFER và hiển thị ngay cho người gửi.
+     * @param {File} file
+     */
+    function sendFile(file) {
+        if (!file) return;
+        if (!wsManager.isConnected) {
+            alert('Chưa kết nối tới Server!');
+            return;
+        }
+        if (file.size > MAX_FILE_SIZE) {
+            appendSystemMessage(`⚠️ "${file.name}" (${_formatFileSize(file.size)}) vượt quá 5MB – không gửi được.`);
+            return;
+        }
+
+        // Chốt người nhận tại thời điểm chọn tệp (tránh đổi tab trong lúc đang đọc file)
+        const target = activeTarget;
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            const base64Data = String(e.target.result).split(',')[1] || '';
+            const mimeType   = file.type || _guessMime(file.name);
+            const isImage    = mimeType.startsWith('image/') || IMAGE_EXT_RE.test(file.name);
+
+            wsManager.sendFileMessage(target, file.name, file.size, isImage, base64Data, mimeType);
+
+            const selfMsg = {
+                _self:     true,
+                action:    'FILE_TRANSFER',
+                sender:    wsManager.username,
+                receiver:  target,
+                content:   JSON.stringify({ fileName: file.name, fileSize: file.size, isImage, base64Data, mimeType }),
+                timestamp: Date.now()
+            };
+            const key = _chatKey(selfMsg);
+            if (!chatLog[key]) chatLog[key] = [];
+            chatLog[key].push(selfMsg);
+            if (key === activeTarget) renderBubble(selfMsg, false);
+        };
+        reader.onerror = () => appendSystemMessage(`❌ Không đọc được tệp "${file.name}".`);
+        reader.readAsDataURL(file);
+    }
+
+    /* ── Nút 📎 ── */
     if (btnAttachFile && fileInput) {
         btnAttachFile.addEventListener('click', () => {
-            if (!wsManager.isConnected && !wsManager.demoMode) {
+            if (!wsManager.isConnected) {
                 alert('Chưa kết nối tới Server!');
                 return;
             }
@@ -519,45 +572,96 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         fileInput.addEventListener('change', () => {
-            const file = fileInput.files[0];
-            if (!file) return;
+            Array.from(fileInput.files || []).forEach(sendFile);
+            fileInput.value = '';
+        });
+    }
 
-            // Giới hạn 5MB tương tự Desktop Client
-            if (file.size > 5 * 1024 * 1024) {
-                alert('Dung lượng tệp tin vượt quá 5MB. Vui lòng chọn tệp nhỏ hơn!');
-                return;
+    /* ── Dán ảnh / tệp từ clipboard (Ctrl+V) vào ô nhập ── */
+    messageInput.addEventListener('paste', (e) => {
+        const files = Array.from(e.clipboardData?.files || []);
+        if (files.length === 0) return;             // dán chữ / link bình thường
+        e.preventDefault();
+        files.forEach((f, i) => {
+            // Ảnh chụp màn hình thường tên "image.png" → đặt tên dễ phân biệt hơn
+            if (/^image\.\w+$/i.test(f.name)) {
+                const ext = f.name.split('.').pop();
+                f = new File([f], `anh-dan-${Date.now()}${i ? '-' + i : ''}.${ext}`, { type: f.type });
             }
+            sendFile(f);
+        });
+    });
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const base64Data = e.target.result.split(',')[1];
-                const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
+    /* ── Kéo-thả tệp vào khung chat ── */
+    const chatMain = document.querySelector('.chat-main');
+    if (chatMain) {
+        let dragDepth = 0;
+        const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
 
-                wsManager.sendFileMessage(activeTarget, file.name, file.size, isImage, base64Data);
+        chatMain.addEventListener('dragenter', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            dragDepth++;
+            chatMain.classList.add('drag-over');
+        });
+        chatMain.addEventListener('dragover', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+        chatMain.addEventListener('dragleave', () => {
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) chatMain.classList.remove('drag-over');
+        });
+        chatMain.addEventListener('drop', (e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            dragDepth = 0;
+            chatMain.classList.remove('drag-over');
+            Array.from(e.dataTransfer.files || []).forEach(sendFile);
+        });
+    }
 
-                // Append tin nhắn cục bộ cho chính mình
-                const payloadObj = {
-                    fileName: file.name,
-                    fileSize: file.size,
-                    isImage: isImage,
-                    base64Data: base64Data
-                };
-                const selfMsg = {
-                    _self: true,
-                    action: 'FILE_TRANSFER',
-                    sender: wsManager.username,
-                    receiver: activeTarget,
-                    content: JSON.stringify(payloadObj),
-                    timestamp: Date.now()
-                };
+    /* ── Click trong khung chat: xem ảnh lớn / tải tệp (event delegation) ── */
+    chatMessages.addEventListener('click', (e) => {
+        const el = e.target.closest('[data-action]');
+        if (!el) return;
+        const action = el.getAttribute('data-action');
 
-                const key = _chatKey(selfMsg);
-                if (!chatLog[key]) chatLog[key] = [];
-                chatLog[key].push(selfMsg);
+        if (action === 'view-image') {
+            e.preventDefault();
+            _openLightbox(el.getAttribute('src'), el.getAttribute('alt') || '');
+        } else if (action === 'download') {
+            e.preventDefault();
+            const bubble = el.closest('.message-bubble');
+            const payload = bubble && _parseFilePayload(bubble._msg?.content);
+            if (payload) _downloadPayload(payload);
+        }
+    });
 
-                renderBubble(selfMsg, false);
-            };
-            reader.readAsDataURL(file);
+    /* ── Lightbox xem ảnh ── */
+    const lightbox      = document.getElementById('imageLightbox');
+    const lightboxImg   = document.getElementById('lightboxImg');
+    const lightboxCap   = document.getElementById('lightboxCaption');
+
+    function _openLightbox(src, caption) {
+        if (!lightbox || !lightboxImg) { window.open(src, '_blank', 'noopener'); return; }
+        lightboxImg.src = src;
+        lightboxImg.alt = caption;
+        if (lightboxCap) lightboxCap.textContent = caption;
+        lightbox.classList.remove('display-none');
+    }
+    function _closeLightbox() {
+        if (!lightbox) return;
+        lightbox.classList.add('display-none');
+        lightboxImg.removeAttribute('src');
+    }
+    if (lightbox) {
+        lightbox.addEventListener('click', (e) => {
+            if (e.target !== lightboxImg) _closeLightbox();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') _closeLightbox();
         });
     }
 
@@ -579,50 +683,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (msg.action === 'CHAT_GROUP') typeLabel = '[Nhóm]';
         else if (msg.action === 'FILE_TRANSFER') typeLabel = '[File/Ảnh]';
 
-        let bodyHtml = '';
-        if (msg.action === 'FILE_TRANSFER') {
-            let payload = null;
-            try {
-                payload = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
-            } catch (e) {
-                payload = null;
-            }
-
-            if (payload && payload.fileName) {
-                const fileSizeStr = _formatFileSize(payload.fileSize);
-                if (payload.isImage && payload.base64Data) {
-                    bodyHtml = `
-                        <div class="msg-file-image my-1">
-                            <img src="data:image/png;base64,${payload.base64Data}" alt="${_escHtml(payload.fileName)}" class="chat-img-preview" onclick="window.open(this.src, '_blank')">
-                            <div class="small opacity-75 mt-1 d-flex align-items-center justify-content-between">
-                                <span><i class="fa-solid fa-image me-1"></i>${_escHtml(payload.fileName)}</span>
-                                <span>${fileSizeStr}</span>
-                            </div>
-                        </div>`;
-                } else if (payload.base64Data) {
-                    bodyHtml = `
-                        <div class="msg-file-card p-2 d-flex align-items-center gap-3 my-1">
-                            <div class="file-icon fs-3 text-info"><i class="fa-solid fa-file-lines"></i></div>
-                            <div class="flex-grow-1 overflow-hidden">
-                                <div class="fw-semibold text-truncate small" title="${_escHtml(payload.fileName)}">${_escHtml(payload.fileName)}</div>
-                                <div class="small opacity-75">${fileSizeStr}</div>
-                            </div>
-                            <a href="data:application/octet-stream;base64,${payload.base64Data}" download="${_escHtml(payload.fileName)}" class="btn btn-sm btn-outline-info flex-shrink-0" title="Tải xuống tệp">
-                                <i class="fa-solid fa-download"></i>
-                            </a>
-                        </div>`;
-                } else {
-                    bodyHtml = `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
-                }
-            } else {
-                bodyHtml = `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
-            }
-        } else {
-            bodyHtml = `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
-        }
+        const bodyHtml = msg.action === 'FILE_TRANSFER'
+            ? _buildFileBody(msg)
+            : `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
 
         const bubble = document.createElement('div');
         bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
+        bubble._msg = msg; // giữ tham chiếu để nút "Tải xuống" lấy lại payload
         bubble.innerHTML = `
             <div class="msg-sender">${isSelf ? 'Bạn' : _escHtml(msg.sender)}
                 <span class="opacity-50 font-monospace" style="font-size:10px;font-weight:400"> ${typeLabel}</span>
@@ -667,13 +734,162 @@ document.addEventListener('DOMContentLoaded', () => {
         return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
     }
 
-    /** Tự động nhận diện hyperlink URL (http, https) */
+    /**
+     * Tự động nhận diện link (http://, https://, www.) – an toàn XSS.
+     * Escape từng đoạn riêng (không chèn chuỗi đã escape vào href) và loại dấu ' " < >
+     * khỏi URL để không thể "thoát" khỏi thuộc tính HTML.
+     * Link trỏ tới ảnh (.png/.jpg/.gif/.webp…) được hiển thị kèm ảnh xem trước.
+     */
     function _formatMessageText(text) {
-        const escaped = _escHtml(text);
-        const urlRegex = /(https?:\/\/[^\s<]+)/gi;
-        return escaped.replace(urlRegex, (url) => {
-            return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${url}</a>`;
-        }).replace(/\n/g, '<br>');
+        const raw = String(text ?? '');
+        const urlRegex = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
+        let html = '';
+        let last = 0;
+        const imagePreviews = [];
+
+        for (const m of raw.matchAll(urlRegex)) {
+            let url = m[0];
+            // Bỏ dấu câu dính cuối link: "xem https://abc.com." → không lấy dấu chấm
+            const trail = url.match(/[.,!?;:)\]]+$/);
+            if (trail) url = url.slice(0, -trail[0].length);
+            if (!url) continue;
+
+            const href = /^www\./i.test(url) ? `https://${url}` : url;
+            html += _escHtml(raw.slice(last, m.index));
+            html += `<a href="${_escAttr(href)}" target="_blank" rel="noopener noreferrer" class="chat-link">${_escHtml(url)}</a>`;
+            last = m.index + url.length;
+
+            if (/\.(png|jpe?g|gif|webp|bmp|svg)(\?[^#]*)?(#.*)?$/i.test(href) && imagePreviews.length < 3) {
+                imagePreviews.push(href);
+            }
+        }
+        html += _escHtml(raw.slice(last));
+        html = html.replace(/\n/g, '<br>');
+
+        imagePreviews.forEach(src => {
+            html += `<div class="mt-1"><img src="${_escAttr(src)}" alt="Ảnh từ link" class="chat-img-preview chat-link-img"
+                         data-action="view-image" loading="lazy" referrerpolicy="no-referrer"
+                         onerror="this.parentElement.remove()"></div>`;
+        });
+        return html;
+    }
+
+    /** Escape cho giá trị thuộc tính HTML. */
+    function _escAttr(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /* ── FILE_TRANSFER helpers ── */
+
+    const MIME_BY_EXT = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+        bmp: 'image/bmp', svg: 'image/svg+xml', pdf: 'application/pdf', txt: 'text/plain',
+        zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
+        doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        mp3: 'audio/mpeg', mp4: 'video/mp4', json: 'application/json', csv: 'text/csv'
+    };
+
+    function _fileExt(name) {
+        const m = String(name || '').match(/\.([a-z0-9]+)$/i);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    function _guessMime(name) {
+        return MIME_BY_EXT[_fileExt(name)] || 'application/octet-stream';
+    }
+
+    /** Icon FontAwesome theo loại tệp. */
+    function _fileIcon(name) {
+        const ext = _fileExt(name);
+        if (ext === 'pdf') return 'fa-file-pdf text-danger';
+        if (['doc', 'docx'].includes(ext)) return 'fa-file-word text-primary';
+        if (['xls', 'xlsx', 'csv'].includes(ext)) return 'fa-file-excel text-success';
+        if (['ppt', 'pptx'].includes(ext)) return 'fa-file-powerpoint text-warning';
+        if (['zip', 'rar', '7z'].includes(ext)) return 'fa-file-zipper text-warning';
+        if (['mp3', 'wav', 'ogg'].includes(ext)) return 'fa-file-audio text-info';
+        if (['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'fa-file-video text-info';
+        if (['js', 'java', 'cs', 'html', 'css', 'json', 'xml', 'py'].includes(ext)) return 'fa-file-code text-info';
+        return 'fa-file-lines text-info';
+    }
+
+    /**
+     * Parse + kiểm tra payload FILE_TRANSFER (định dạng chung với Desktop: fileName, fileSize, isImage, base64Data).
+     * Trả về null nếu không hợp lệ → hiển thị như text thường.
+     */
+    function _parseFilePayload(content) {
+        let p;
+        try {
+            p = typeof content === 'string' ? JSON.parse(content) : content;
+        } catch (_) {
+            return null;
+        }
+        if (!p || typeof p.fileName !== 'string' || typeof p.base64Data !== 'string') return null;
+        // Chỉ chấp nhận ký tự Base64 hợp lệ → không thể chèn mã HTML qua src="data:..."
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(p.base64Data)) return null;
+        if (p.mimeType && !/^[\w.+-]+\/[\w.+-]+$/.test(p.mimeType)) p.mimeType = '';
+        return p;
+    }
+
+    /** HTML phần thân bubble cho FILE_TRANSFER (ảnh xem trước hoặc thẻ tệp). */
+    function _buildFileBody(msg) {
+        const p = _parseFilePayload(msg.content);
+        if (!p) return `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
+
+        const name = _escHtml(p.fileName);
+        const size = _formatFileSize(p.fileSize);
+        const mime = p.mimeType || _guessMime(p.fileName);
+
+        if (p.isImage) {
+            const imgMime = mime.startsWith('image/') ? mime : 'image/png';
+            return `
+                <div class="msg-file-image my-1">
+                    <img src="data:${imgMime};base64,${p.base64Data}" alt="${_escAttr(p.fileName)}"
+                         class="chat-img-preview" data-action="view-image" title="Bấm để xem ảnh lớn">
+                    <div class="small opacity-75 mt-1 d-flex align-items-center justify-content-between gap-2">
+                        <span class="text-truncate"><i class="fa-solid fa-image me-1"></i>${name}</span>
+                        <span class="flex-shrink-0">${size}
+                            <a href="#" data-action="download" class="ms-2 text-info" title="Tải ảnh xuống"><i class="fa-solid fa-download"></i></a>
+                        </span>
+                    </div>
+                </div>`;
+        }
+
+        return `
+            <div class="msg-file-card p-2 d-flex align-items-center gap-3 my-1">
+                <div class="file-icon fs-3"><i class="fa-solid ${_fileIcon(p.fileName)}"></i></div>
+                <div class="flex-grow-1 overflow-hidden">
+                    <div class="fw-semibold text-truncate small" title="${_escAttr(p.fileName)}">${name}</div>
+                    <div class="small opacity-75">${size}</div>
+                </div>
+                <button type="button" data-action="download" class="btn btn-sm btn-outline-info flex-shrink-0" title="Tải xuống tệp">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+            </div>`;
+    }
+
+    /** Giải mã Base64 → Blob → tải xuống với đúng tên tệp. */
+    function _downloadPayload(p) {
+        try {
+            const bin = atob(p.base64Data);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: p.mimeType || _guessMime(p.fileName) });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = p.fileName || 'tep-tin';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (e) {
+            console.error('[FILE] Lỗi giải mã tệp:', e);
+            alert('Không thể tải tệp – dữ liệu bị lỗi.');
+        }
     }
 
 }); // end DOMContentLoaded
