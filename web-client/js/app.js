@@ -12,6 +12,8 @@
  *  ✅ Chế độ Demo không cần Server
  *  ✅ Hiển thị trạng thái kết nối realtime
  *  ✅ Xuất lịch sử chat ra file .txt
+ *  ✅ Gửi / nhận tệp tin và hình ảnh (FILE_TRANSFER – Base64, tối đa 5MB)
+ *  ✅ Tự động nhận diện và render hyperlink URL trong tin nhắn
  *
  * Người thực hiện: Trương Hoàng Phúc – MSSV 2380601760
  * Môn: Lập Trình Mạng – Nhóm 11
@@ -46,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatMessages     = document.getElementById('chatMessages');
     const messageForm      = document.getElementById('messageForm');
     const messageInput     = document.getElementById('messageInput');
+    const btnAttachFile    = document.getElementById('btnAttachFile');
+    const fileInput        = document.getElementById('fileInput');
     const btnToggleSound   = document.getElementById('btnToggleSound');
     const soundIcon        = document.getElementById('soundIcon');
     const btnExportChat    = document.getElementById('btnExportChat');
@@ -138,8 +142,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const lines = allMessages.map(m => {
                 const t = new Date(m.timestamp || Date.now()).toLocaleString('vi-VN');
-                const type = m.action === 'CHAT_GROUP' ? '[Nhóm]' : '[Cá nhân]';
-                return `[${t}] ${type} ${m.sender} → ${m.receiver}: ${m.content}`;
+                let type = '[Cá nhân]';
+                if (m.action === 'CHAT_GROUP') type = '[Nhóm]';
+                else if (m.action === 'FILE_TRANSFER') type = '[File/Ảnh]';
+                let content = m.content;
+                if (m.action === 'FILE_TRANSFER') {
+                    try {
+                        const p = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
+                        content = p.fileName ? `[File: ${p.fileName}, ${p.fileSize ? (p.fileSize / 1024).toFixed(1) + ' KB' : ''}]` : m.content;
+                    } catch (_) {}
+                }
+                return `[${t}] ${type} ${m.sender} → ${m.receiver}: ${content}`;
             });
             const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
             const url  = URL.createObjectURL(blob);
@@ -264,7 +277,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /* ── 6f. Trạng thái đang gõ ── */
+    /* ── 6f. Nhận tệp tin / hình ảnh (FILE_TRANSFER) ── */
+    wsManager.onFileReceived = (msg) => {
+        if (msg._self || msg._demo) return;
+
+        const key = _chatKey(msg);
+        if (!chatLog[key]) chatLog[key] = [];
+        chatLog[key].push(msg);
+
+        if (key === activeTarget) {
+            renderBubble(msg, false);
+        } else {
+            unreadCounts[key] = (unreadCounts[key] || 0) + 1;
+            _updateUnreadBadge(key);
+            playNotificationSound();
+        }
+
+        if (key === activeTarget && msg.sender !== wsManager.username) {
+            playNotificationSound();
+        }
+    };
+
+    /* ── 6g. Trạng thái đang gõ ── */
     wsManager.onTyping = (msg) => {
         if (msg.sender === wsManager.username) return;
         typingIndicator.textContent = `${msg.sender} đang nhập tin nhắn…`;
@@ -375,10 +409,12 @@ document.addEventListener('DOMContentLoaded', () => {
         history.forEach(m => renderBubble(m, false));
     }
 
-    /** Tìm key lưu lịch sử: với CHAT_SINGLE, key = tên partner; với GROUP = 'ALL'. */
+    /** Tìm key lưu lịch sử: với CHAT_GROUP / FILE_TRANSFER-ALL = 'ALL', CHAT_SINGLE/FILE_TRANSFER-1v1 = tên partner. */
     function _chatKey(msg) {
         if (msg.action === 'CHAT_GROUP') return 'ALL';
-        // CHAT_SINGLE: key = partner (người kia)
+        // FILE_TRANSFER gửi nhóm
+        if (msg.action === 'FILE_TRANSFER' && msg.receiver === 'ALL') return 'ALL';
+        // CHAT_SINGLE hoặc FILE_TRANSFER 1-1: key = partner (người kia)
         if (msg.sender === wsManager.username) return msg.receiver;
         return msg.sender;
     }
@@ -471,6 +507,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    /* ── Đính kèm gửi File / Hình ảnh ── */
+    if (btnAttachFile && fileInput) {
+        btnAttachFile.addEventListener('click', () => {
+            if (!wsManager.isConnected && !wsManager.demoMode) {
+                alert('Chưa kết nối tới Server!');
+                return;
+            }
+            fileInput.value = '';
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Giới hạn 5MB tương tự Desktop Client
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Dung lượng tệp tin vượt quá 5MB. Vui lòng chọn tệp nhỏ hơn!');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64Data = e.target.result.split(',')[1];
+                const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
+
+                wsManager.sendFileMessage(activeTarget, file.name, file.size, isImage, base64Data);
+
+                // Append tin nhắn cục bộ cho chính mình
+                const payloadObj = {
+                    fileName: file.name,
+                    fileSize: file.size,
+                    isImage: isImage,
+                    base64Data: base64Data
+                };
+                const selfMsg = {
+                    _self: true,
+                    action: 'FILE_TRANSFER',
+                    sender: wsManager.username,
+                    receiver: activeTarget,
+                    content: JSON.stringify(payloadObj),
+                    timestamp: Date.now()
+                };
+
+                const key = _chatKey(selfMsg);
+                if (!chatLog[key]) chatLog[key] = [];
+                chatLog[key].push(selfMsg);
+
+                renderBubble(selfMsg, false);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
     /* ════════════════════════════════════════════════
        12. RENDER TIN NHẮN
     ════════════════════════════════════════════════ */
@@ -484,7 +574,52 @@ document.addEventListener('DOMContentLoaded', () => {
         const isSelf  = msg.sender === wsManager.username;
         const timeStr = new Date(msg.timestamp || Date.now())
             .toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        const typeLabel = msg.action === 'CHAT_GROUP' ? '[Nhóm]' : '[Cá nhân]';
+
+        let typeLabel = '[Cá nhân]';
+        if (msg.action === 'CHAT_GROUP') typeLabel = '[Nhóm]';
+        else if (msg.action === 'FILE_TRANSFER') typeLabel = '[File/Ảnh]';
+
+        let bodyHtml = '';
+        if (msg.action === 'FILE_TRANSFER') {
+            let payload = null;
+            try {
+                payload = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
+            } catch (e) {
+                payload = null;
+            }
+
+            if (payload && payload.fileName) {
+                const fileSizeStr = _formatFileSize(payload.fileSize);
+                if (payload.isImage && payload.base64Data) {
+                    bodyHtml = `
+                        <div class="msg-file-image my-1">
+                            <img src="data:image/png;base64,${payload.base64Data}" alt="${_escHtml(payload.fileName)}" class="chat-img-preview" onclick="window.open(this.src, '_blank')">
+                            <div class="small opacity-75 mt-1 d-flex align-items-center justify-content-between">
+                                <span><i class="fa-solid fa-image me-1"></i>${_escHtml(payload.fileName)}</span>
+                                <span>${fileSizeStr}</span>
+                            </div>
+                        </div>`;
+                } else if (payload.base64Data) {
+                    bodyHtml = `
+                        <div class="msg-file-card p-2 d-flex align-items-center gap-3 my-1">
+                            <div class="file-icon fs-3 text-info"><i class="fa-solid fa-file-lines"></i></div>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="fw-semibold text-truncate small" title="${_escHtml(payload.fileName)}">${_escHtml(payload.fileName)}</div>
+                                <div class="small opacity-75">${fileSizeStr}</div>
+                            </div>
+                            <a href="data:application/octet-stream;base64,${payload.base64Data}" download="${_escHtml(payload.fileName)}" class="btn btn-sm btn-outline-info flex-shrink-0" title="Tải xuống tệp">
+                                <i class="fa-solid fa-download"></i>
+                            </a>
+                        </div>`;
+                } else {
+                    bodyHtml = `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
+                }
+            } else {
+                bodyHtml = `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
+            }
+        } else {
+            bodyHtml = `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
+        }
 
         const bubble = document.createElement('div');
         bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
@@ -492,14 +627,13 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="msg-sender">${isSelf ? 'Bạn' : _escHtml(msg.sender)}
                 <span class="opacity-50 font-monospace" style="font-size:10px;font-weight:400"> ${typeLabel}</span>
             </div>
-            <div class="msg-text">${_escHtml(msg.content)}</div>
+            ${bodyHtml}
             <div class="msg-meta">${timeStr}</div>`;
 
         if (prepend && chatMessages.firstChild) {
             chatMessages.insertBefore(bubble, chatMessages.firstChild);
         } else {
             chatMessages.appendChild(bubble);
-            // Auto-scroll xuống cuối
             requestAnimationFrame(() => {
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             });
@@ -524,6 +658,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const d = document.createElement('div');
         d.textContent = String(text ?? '');
         return d.innerHTML;
+    }
+
+    /** Định dạng dung lượng byte thành B, KB, MB */
+    function _formatFileSize(bytes) {
+        if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    /** Tự động nhận diện hyperlink URL (http, https) */
+    function _formatMessageText(text) {
+        const escaped = _escHtml(text);
+        const urlRegex = /(https?:\/\/[^\s<]+)/gi;
+        return escaped.replace(urlRegex, (url) => {
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${url}</a>`;
+        }).replace(/\n/g, '<br>');
     }
 
 }); // end DOMContentLoaded

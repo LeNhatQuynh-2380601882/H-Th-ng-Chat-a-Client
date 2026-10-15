@@ -15,122 +15,310 @@ namespace ChatDesktopApp.Forms
 
         private void InitializeComponent()
         {
-            this.lblCurrentUser = new System.Windows.Forms.Label();
-            this.lblTargetChat = new System.Windows.Forms.Label();
-            this.lblUserListHeader = new System.Windows.Forms.Label();
+            this.components = new System.ComponentModel.Container();
+            this.pnlLeft = new System.Windows.Forms.Panel();
+            this.txtSearchUser = new System.Windows.Forms.TextBox();
+            this.btnLogout = new System.Windows.Forms.Button();
             this.lstUsers = new System.Windows.Forms.ListBox();
-            this.txtChatLog = new System.Windows.Forms.TextBox();
+            this.lblOnlineHeader = new System.Windows.Forms.Label();
+            this.lblConnectionStatus = new System.Windows.Forms.Label();
+            this.lblCurrentUser = new System.Windows.Forms.Label();
+            this.pnlChatHeader = new System.Windows.Forms.Panel();
+            this.txtSearchMessage = new System.Windows.Forms.TextBox();
+            this.lblTargetSubtitle = new System.Windows.Forms.Label();
+            this.lblTargetChat = new System.Windows.Forms.Label();
+            this.txtChatLog = new System.Windows.Forms.RichTextBox();
+            this.lblTyping = new System.Windows.Forms.Label();
             this.txtInputMessage = new System.Windows.Forms.TextBox();
             this.btnSend = new System.Windows.Forms.Button();
-            this.lblTyping = new System.Windows.Forms.Label();
+            this.btnSendFile = new System.Windows.Forms.Button();
+            this.btnEmoji = new System.Windows.Forms.Button();
+            this.notifyIconApp = new System.Windows.Forms.NotifyIcon(this.components);
+            this.pnlLeft.SuspendLayout();
+            this.pnlChatHeader.SuspendLayout();
             this.SuspendLayout();
-
-            // lblCurrentUser
-            this.lblCurrentUser.AutoSize = true;
-            this.lblCurrentUser.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
-            this.lblCurrentUser.ForeColor = System.Drawing.Color.DarkBlue;
-            this.lblCurrentUser.Location = new System.Drawing.Point(15, 15);
-            this.lblCurrentUser.Name = "lblCurrentUser";
-            this.lblCurrentUser.Size = new System.Drawing.Size(95, 20);
-            this.lblCurrentUser.TabIndex = 0;
-            this.lblCurrentUser.Text = "User: [...]";
-
-            // lblTargetChat
-            this.lblTargetChat.AutoSize = true;
-            this.lblTargetChat.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
-            this.lblTargetChat.ForeColor = System.Drawing.Color.DimGray;
-            this.lblTargetChat.Location = new System.Drawing.Point(220, 16);
-            this.lblTargetChat.Name = "lblTargetChat";
-            this.lblTargetChat.Size = new System.Drawing.Size(165, 19);
-            this.lblTargetChat.TabIndex = 1;
-            this.lblTargetChat.Text = "Phòng Chat: TẤT CẢ (ALL)";
-
-            // lblUserListHeader
-            this.lblUserListHeader.AutoSize = true;
-            this.lblUserListHeader.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.lblUserListHeader.Location = new System.Drawing.Point(15, 50);
-            this.lblUserListHeader.Name = "lblUserListHeader";
-            this.lblUserListHeader.Size = new System.Drawing.Size(135, 15);
-            this.lblUserListHeader.TabIndex = 2;
-            this.lblUserListHeader.Text = "DANH SÁCH ONLINE:";
-
+            // 
+            // pnlLeft
+            // 
+            this.pnlLeft.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(240)))), ((int)(((byte)(242)))), ((int)(((byte)(245)))));
+            this.pnlLeft.Controls.Add(this.txtSearchUser);
+            this.pnlLeft.Controls.Add(this.btnLogout);
+            this.pnlLeft.Controls.Add(this.lstUsers);
+            this.pnlLeft.Controls.Add(this.lblOnlineHeader);
+            this.pnlLeft.Controls.Add(this.lblConnectionStatus);
+            this.pnlLeft.Controls.Add(this.lblCurrentUser);
+            this.pnlLeft.Dock = System.Windows.Forms.DockStyle.Left;
+            this.pnlLeft.Location = new System.Drawing.Point(0, 0);
+            this.pnlLeft.Name = "pnlLeft";
+            this.pnlLeft.Padding = new System.Windows.Forms.Padding(12);
+            this.pnlLeft.Size = new System.Drawing.Size(220, 501);
+            this.pnlLeft.TabIndex = 0;
+            // 
+            // txtSearchUser
+            // 
+            this.txtSearchUser.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtSearchUser.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.txtSearchUser.Location = new System.Drawing.Point(12, 95);
+            this.txtSearchUser.Name = "txtSearchUser";
+            this.txtSearchUser.PlaceholderText = "🔍 Tìm bạn bè...";
+            this.txtSearchUser.Size = new System.Drawing.Size(196, 23);
+            this.txtSearchUser.TabIndex = 2;
+            this.txtSearchUser.TextChanged += new System.EventHandler(this.txtSearchUser_TextChanged);
+            // 
+            // btnLogout
+            // 
+            this.btnLogout.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(220)))), ((int)(((byte)(53)))), ((int)(((byte)(69)))));
+            this.btnLogout.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnLogout.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.btnLogout.FlatAppearance.BorderSize = 0;
+            this.btnLogout.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnLogout.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            this.btnLogout.ForeColor = System.Drawing.Color.White;
+            this.btnLogout.Location = new System.Drawing.Point(12, 459);
+            this.btnLogout.Name = "btnLogout";
+            this.btnLogout.Size = new System.Drawing.Size(196, 30);
+            this.btnLogout.TabIndex = 4;
+            this.btnLogout.Text = "ĐĂNG XUẤT";
+            this.btnLogout.UseVisualStyleBackColor = false;
+            this.btnLogout.Click += new System.EventHandler(this.btnLogout_Click);
+            // 
             // lstUsers
+            // 
+            this.lstUsers.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.lstUsers.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.lstUsers.Font = new System.Drawing.Font("Segoe UI", 9.75F, System.Drawing.FontStyle.Regular);
             this.lstUsers.FormattingEnabled = true;
-            this.lstUsers.ItemHeight = 15;
-            this.lstUsers.Location = new System.Drawing.Point(15, 70);
+            this.lstUsers.ItemHeight = 17;
+            this.lstUsers.Location = new System.Drawing.Point(12, 124);
             this.lstUsers.Name = "lstUsers";
-            this.lstUsers.Size = new System.Drawing.Size(180, 334);
+            this.lstUsers.Size = new System.Drawing.Size(196, 316);
             this.lstUsers.TabIndex = 3;
             this.lstUsers.SelectedIndexChanged += new System.EventHandler(this.lstUsers_SelectedIndexChanged);
-
+            // 
+            // lblOnlineHeader
+            // 
+            this.lblOnlineHeader.AutoSize = true;
+            this.lblOnlineHeader.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
+            this.lblOnlineHeader.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(110)))), ((int)(((byte)(120)))));
+            this.lblOnlineHeader.Location = new System.Drawing.Point(12, 75);
+            this.lblOnlineHeader.Name = "lblOnlineHeader";
+            this.lblOnlineHeader.Size = new System.Drawing.Size(126, 15);
+            this.lblOnlineHeader.TabIndex = 1;
+            this.lblOnlineHeader.Text = "DANH SÁCH ONLINE:";
+            // 
+            // lblConnectionStatus
+            // 
+            this.lblConnectionStatus.AutoSize = true;
+            this.lblConnectionStatus.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
+            this.lblConnectionStatus.ForeColor = System.Drawing.Color.ForestGreen;
+            this.lblConnectionStatus.Location = new System.Drawing.Point(12, 45);
+            this.lblConnectionStatus.Name = "lblConnectionStatus";
+            this.lblConnectionStatus.Size = new System.Drawing.Size(84, 15);
+            this.lblConnectionStatus.TabIndex = 1;
+            this.lblConnectionStatus.Text = "🟢 Đã kết nối";
+            // 
+            // lblCurrentUser
+            // 
+            this.lblCurrentUser.AutoEllipsis = true;
+            this.lblCurrentUser.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+            this.lblCurrentUser.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(20)))), ((int)(((byte)(30)))), ((int)(((byte)(80)))));
+            this.lblCurrentUser.Location = new System.Drawing.Point(10, 15);
+            this.lblCurrentUser.Name = "lblCurrentUser";
+            this.lblCurrentUser.Size = new System.Drawing.Size(200, 24);
+            this.lblCurrentUser.TabIndex = 0;
+            this.lblCurrentUser.Text = "👤 Bạn: [...]";
+            // 
+            // pnlChatHeader
+            // 
+            this.pnlChatHeader.BackColor = System.Drawing.Color.White;
+            this.pnlChatHeader.Controls.Add(this.txtSearchMessage);
+            this.pnlChatHeader.Controls.Add(this.lblTargetSubtitle);
+            this.pnlChatHeader.Controls.Add(this.lblTargetChat);
+            this.pnlChatHeader.Dock = System.Windows.Forms.DockStyle.Top;
+            this.pnlChatHeader.Location = new System.Drawing.Point(220, 0);
+            this.pnlChatHeader.Name = "pnlChatHeader";
+            this.pnlChatHeader.Padding = new System.Windows.Forms.Padding(16, 10, 16, 10);
+            this.pnlChatHeader.Size = new System.Drawing.Size(614, 60);
+            this.pnlChatHeader.TabIndex = 1;
+            // 
+            // txtSearchMessage
+            // 
+            this.txtSearchMessage.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtSearchMessage.Font = new System.Drawing.Font("Segoe UI", 8.5F);
+            this.txtSearchMessage.Location = new System.Drawing.Point(440, 18);
+            this.txtSearchMessage.Name = "txtSearchMessage";
+            this.txtSearchMessage.PlaceholderText = "🔍 Tìm tin nhắn...";
+            this.txtSearchMessage.Size = new System.Drawing.Size(160, 23);
+            this.txtSearchMessage.TabIndex = 2;
+            this.txtSearchMessage.TextChanged += new System.EventHandler(this.txtSearchMessage_TextChanged);
+            // 
+            // lblTargetSubtitle
+            // 
+            this.lblTargetSubtitle.AutoSize = true;
+            this.lblTargetSubtitle.Font = new System.Drawing.Font("Segoe UI", 8.5F);
+            this.lblTargetSubtitle.ForeColor = System.Drawing.Color.Gray;
+            this.lblTargetSubtitle.Location = new System.Drawing.Point(16, 35);
+            this.lblTargetSubtitle.Name = "lblTargetSubtitle";
+            this.lblTargetSubtitle.Size = new System.Drawing.Size(183, 15);
+            this.lblTargetSubtitle.TabIndex = 1;
+            this.lblTargetSubtitle.Text = "Tin nhắn gửi tới tất cả thành viên";
+            // 
+            // lblTargetChat
+            // 
+            this.lblTargetChat.AutoSize = true;
+            this.lblTargetChat.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
+            this.lblTargetChat.ForeColor = System.Drawing.Color.MidnightBlue;
+            this.lblTargetChat.Location = new System.Drawing.Point(15, 10);
+            this.lblTargetChat.Name = "lblTargetChat";
+            this.lblTargetChat.Size = new System.Drawing.Size(217, 21);
+            this.lblTargetChat.TabIndex = 0;
+            this.lblTargetChat.Text = "Phòng Chat: TẤT CẢ (ALL)";
+            // 
             // txtChatLog
+            // 
+            this.txtChatLog.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
             this.txtChatLog.BackColor = System.Drawing.Color.White;
-            this.txtChatLog.Font = new System.Drawing.Font("Consolas", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
-            this.txtChatLog.Location = new System.Drawing.Point(215, 45);
-            this.txtChatLog.Multiline = true;
+            this.txtChatLog.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.txtChatLog.Font = new System.Drawing.Font("Segoe UI Emoji", 10F);
+            this.txtChatLog.Location = new System.Drawing.Point(232, 66);
             this.txtChatLog.Name = "txtChatLog";
             this.txtChatLog.ReadOnly = true;
-            this.txtChatLog.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.txtChatLog.Size = new System.Drawing.Size(550, 320);
-            this.txtChatLog.TabIndex = 4;
-
+            this.txtChatLog.ScrollBars = System.Windows.Forms.RichTextBoxScrollBars.Vertical;
+            this.txtChatLog.Size = new System.Drawing.Size(590, 360);
+            this.txtChatLog.TabIndex = 2;
+            this.txtChatLog.Text = "";
+            this.txtChatLog.LinkClicked += new System.Windows.Forms.LinkClickedEventHandler(this.txtChatLog_LinkClicked);
+            // 
             // lblTyping
+            // 
+            this.lblTyping.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
             this.lblTyping.AutoSize = true;
-            this.lblTyping.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Italic);
-            this.lblTyping.ForeColor = System.Drawing.Color.Green;
-            this.lblTyping.Location = new System.Drawing.Point(215, 370);
+            this.lblTyping.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Italic);
+            this.lblTyping.ForeColor = System.Drawing.Color.DarkGreen;
+            this.lblTyping.Location = new System.Drawing.Point(232, 432);
             this.lblTyping.Name = "lblTyping";
-            this.lblTyping.Size = new System.Drawing.Size(0, 13);
-            this.lblTyping.TabIndex = 5;
-
+            this.lblTyping.Size = new System.Drawing.Size(0, 15);
+            this.lblTyping.TabIndex = 3;
+            // 
             // txtInputMessage
-            this.txtInputMessage.Location = new System.Drawing.Point(215, 385);
+            // 
+            this.txtInputMessage.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtInputMessage.Font = new System.Drawing.Font("Segoe UI Emoji", 10.5F);
+            this.txtInputMessage.Location = new System.Drawing.Point(328, 454);
             this.txtInputMessage.Name = "txtInputMessage";
-            this.txtInputMessage.Size = new System.Drawing.Size(450, 23);
-            this.txtInputMessage.TabIndex = 6;
+            this.txtInputMessage.PlaceholderText = "Nhập nội dung tin nhắn... (Nhấn Enter để gửi)";
+            this.txtInputMessage.Size = new System.Drawing.Size(394, 26);
+            this.txtInputMessage.TabIndex = 4;
             this.txtInputMessage.TextChanged += new System.EventHandler(this.txtInputMessage_TextChanged);
-
+            this.txtInputMessage.KeyDown += new System.Windows.Forms.KeyEventHandler(this.txtInputMessage_KeyDown);
+            // 
             // btnSend
-            this.btnSend.BackColor = System.Drawing.Color.RoyalBlue;
-            this.btnSend.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            // 
+            this.btnSend.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnSend.BackColor = System.Drawing.Color.MidnightBlue;
+            this.btnSend.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnSend.FlatAppearance.BorderSize = 0;
+            this.btnSend.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnSend.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.btnSend.ForeColor = System.Drawing.Color.White;
-            this.btnSend.Location = new System.Drawing.Point(675, 384);
+            this.btnSend.Location = new System.Drawing.Point(730, 452);
             this.btnSend.Name = "btnSend";
-            this.btnSend.Size = new System.Drawing.Size(90, 25);
-            this.btnSend.TabIndex = 7;
+            this.btnSend.Size = new System.Drawing.Size(92, 32);
+            this.btnSend.TabIndex = 5;
             this.btnSend.Text = "GỬI";
             this.btnSend.UseVisualStyleBackColor = false;
             this.btnSend.Click += new System.EventHandler(this.btnSend_Click);
-
+            // 
+            // btnSendFile
+            // 
+            this.btnSendFile.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.btnSendFile.BackColor = System.Drawing.Color.DarkSlateGray;
+            this.btnSendFile.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnSendFile.FlatAppearance.BorderSize = 0;
+            this.btnSendFile.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnSendFile.Font = new System.Drawing.Font("Segoe UI Emoji", 12F, System.Drawing.FontStyle.Regular);
+            this.btnSendFile.ForeColor = System.Drawing.Color.White;
+            this.btnSendFile.Location = new System.Drawing.Point(232, 452);
+            this.btnSendFile.Name = "btnSendFile";
+            this.btnSendFile.Size = new System.Drawing.Size(42, 32);
+            this.btnSendFile.TabIndex = 6;
+            this.btnSendFile.Text = "📎";
+            this.btnSendFile.UseVisualStyleBackColor = false;
+            this.btnSendFile.Click += new System.EventHandler(this.btnSendFile_Click);
+            // 
+            // btnEmoji
+            // 
+            this.btnEmoji.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.btnEmoji.BackColor = System.Drawing.Color.Goldenrod;
+            this.btnEmoji.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnEmoji.FlatAppearance.BorderSize = 0;
+            this.btnEmoji.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnEmoji.Font = new System.Drawing.Font("Segoe UI Emoji", 12F, System.Drawing.FontStyle.Regular);
+            this.btnEmoji.ForeColor = System.Drawing.Color.White;
+            this.btnEmoji.Location = new System.Drawing.Point(280, 452);
+            this.btnEmoji.Name = "btnEmoji";
+            this.btnEmoji.Size = new System.Drawing.Size(42, 32);
+            this.btnEmoji.TabIndex = 7;
+            this.btnEmoji.Text = "😊";
+            this.btnEmoji.UseVisualStyleBackColor = false;
+            this.btnEmoji.Click += new System.EventHandler(this.btnEmoji_Click);
+            // 
+            // notifyIconApp
+            // 
+            this.notifyIconApp.Text = "ChatDesktopApp";
+            this.notifyIconApp.Visible = true;
+            this.notifyIconApp.DoubleClick += new System.EventHandler(this.notifyIconApp_DoubleClick);
+            // 
             // MainForm
+            // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(780, 420);
+            this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(235)))), ((int)(((byte)(238)))), ((int)(((byte)(242)))));
+            this.ClientSize = new System.Drawing.Size(834, 501);
+            this.Controls.Add(this.btnEmoji);
+            this.Controls.Add(this.btnSendFile);
             this.Controls.Add(this.btnSend);
             this.Controls.Add(this.txtInputMessage);
             this.Controls.Add(this.lblTyping);
             this.Controls.Add(this.txtChatLog);
-            this.Controls.Add(this.lstUsers);
-            this.Controls.Add(this.lblUserListHeader);
-            this.Controls.Add(this.lblTargetChat);
-            this.Controls.Add(this.lblCurrentUser);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
+            this.Controls.Add(this.pnlChatHeader);
+            this.Controls.Add(this.pnlLeft);
+            this.MinimumSize = new System.Drawing.Size(700, 450);
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Phòng Chat - System Client (TCP Socket)";
+            this.Text = "Hệ Thống Chat - Desktop Client (WinForms)";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
+            this.pnlLeft.ResumeLayout(false);
+            this.pnlLeft.PerformLayout();
+            this.pnlChatHeader.ResumeLayout(false);
+            this.pnlChatHeader.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
         }
 
+        private System.Windows.Forms.Panel pnlLeft;
         private System.Windows.Forms.Label lblCurrentUser;
-        private System.Windows.Forms.Label lblTargetChat;
-        private System.Windows.Forms.Label lblUserListHeader;
+        private System.Windows.Forms.Label lblConnectionStatus;
+        private System.Windows.Forms.Label lblOnlineHeader;
+        private System.Windows.Forms.TextBox txtSearchUser;
         private System.Windows.Forms.ListBox lstUsers;
-        private System.Windows.Forms.TextBox txtChatLog;
+        private System.Windows.Forms.Button btnLogout;
+        private System.Windows.Forms.Panel pnlChatHeader;
+        private System.Windows.Forms.TextBox txtSearchMessage;
+        private System.Windows.Forms.Label lblTargetChat;
+        private System.Windows.Forms.Label lblTargetSubtitle;
+        private System.Windows.Forms.RichTextBox txtChatLog;
         private System.Windows.Forms.Label lblTyping;
         private System.Windows.Forms.TextBox txtInputMessage;
         private System.Windows.Forms.Button btnSend;
+        private System.Windows.Forms.Button btnSendFile;
+        private System.Windows.Forms.Button btnEmoji;
+        private System.Windows.Forms.NotifyIcon notifyIconApp;
     }
 }

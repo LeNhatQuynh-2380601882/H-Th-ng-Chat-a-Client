@@ -353,3 +353,34 @@ body {
     .login-card { padding: 2rem 1.25rem 1.5rem; }
     .chat-wrapper { padding: 0; }
 }
+
+/* ─── FILE & IMAGE TRANSFER STYLES ─── */
+.msg-file-card {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    transition: background var(--transition);
+}
+.msg-file-card:hover {
+    background: rgba(30, 41, 59, 0.9);
+}
+.chat-img-preview {
+    max-width: 260px;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: transform var(--transition);
+}
+.chat-img-preview:hover {
+    transform: scale(1.02);
+}
+.chat-link {
+    color: #38bdf8 !important;
+    text-decoration: underline !important;
+    word-break: break-all;
+}
+.chat-link:hover {
+    color: #7dd3fc !important;
+}
