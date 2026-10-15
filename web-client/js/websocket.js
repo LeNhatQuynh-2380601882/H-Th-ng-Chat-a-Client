@@ -242,17 +242,19 @@ class WebSocketClientManager {
      * @param {number} fileSize – Dung lượng byte
      * @param {boolean} isImage – Là ảnh hay file thường
      * @param {string} base64Data – Dữ liệu Base64
+     * @param {string} [mimeType] – Kiểu MIME (tuỳ chọn, Desktop Client bỏ qua nếu không dùng)
      */
-    sendFileMessage(receiver, fileName, fileSize, isImage, base64Data) {
+    sendFileMessage(receiver, fileName, fileSize, isImage, base64Data, mimeType) {
         const payloadObj = {
             fileName,
             fileSize,
             isImage,
             base64Data
         };
-        const action = 'FILE_TRANSFER';
+        if (mimeType) payloadObj.mimeType = mimeType;
+
         const msgObj = {
-            action,
+            action:    'FILE_TRANSFER',
             token:     this.token,
             sender:    this.username,
             receiver,
@@ -260,11 +262,8 @@ class WebSocketClientManager {
             timestamp: Date.now()
         };
 
-        if (this.demoMode) {
-            this._simulateEcho(msgObj);
-            return;
-        }
-
+        // _sendJson tự chuyển sang _demoHandleOutbound khi đang ở Demo mode
+        // (trước đây gọi this._simulateEcho – hàm không tồn tại → lỗi TypeError ở Demo).
         this._sendJson(msgObj);
     }
 

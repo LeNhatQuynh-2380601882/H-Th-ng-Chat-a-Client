@@ -353,3 +353,82 @@ body {
     .login-card { padding: 2rem 1.25rem 1.5rem; }
     .chat-wrapper { padding: 0; }
 }
+
+/* ─── FILE & IMAGE TRANSFER STYLES ─── */
+.msg-file-card {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    transition: background var(--transition);
+}
+.msg-file-card:hover {
+    background: rgba(30, 41, 59, 0.9);
+}
+.chat-img-preview {
+    max-width: 260px;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: transform var(--transition);
+}
+.chat-img-preview:hover {
+    transform: scale(1.02);
+}
+.chat-link {
+    color: #38bdf8 !important;
+    text-decoration: underline !important;
+    word-break: break-all;
+}
+.chat-link:hover {
+    color: #7dd3fc !important;
+}
+
+/* ─── GỬI FILE / ẢNH / LINK: kéo-thả, lightbox, link trong bubble ─── */
+.chat-main { position: relative; }
+
+.drop-overlay {
+    position: absolute;
+    inset: 8px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--primary);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.82);
+    color: #e2e8f0;
+    z-index: 20;
+    pointer-events: none;
+}
+.chat-main.drag-over .drop-overlay { display: flex; }
+
+.message-bubble .msg-file-image img { max-width: 100%; }
+.message-bubble.outgoing .chat-link { color: #e0f2fe !important; }
+.message-bubble.outgoing .msg-file-image a.text-info { color: #e0f2fe !important; }
+.chat-link-img { max-height: 180px; }
+
+.image-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(2, 6, 23, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    cursor: zoom-out;
+}
+.image-lightbox img {
+    max-width: 92vw;
+    max-height: 82vh;
+    border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    cursor: default;
+}
+.lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+}

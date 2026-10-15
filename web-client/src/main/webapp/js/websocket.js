@@ -46,6 +46,7 @@ class WebSocketClientManager {
         /* ── Event callbacks (đặt từ app.js) ── */
         this.onLoginSuccess    = null;   // (msg) => {}
         this.onMessageReceived = null;   // (msg) => {}
+        this.onFileReceived    = null;   // (msg) => {}
         this.onUserListUpdated = null;   // (users[]) => {}
         this.onTyping          = null;   // (msg) => {}
         this.onError           = null;   // (errMsg) => {}
@@ -234,6 +235,38 @@ class WebSocketClientManager {
         });
     }
 
+    /**
+     * Gửi tệp tin hoặc hình ảnh (FILE_TRANSFER).
+     * @param {string} receiver – 'ALL' hoặc username cụ thể
+     * @param {string} fileName – Tên file
+     * @param {number} fileSize – Dung lượng byte
+     * @param {boolean} isImage – Là ảnh hay file thường
+     * @param {string} base64Data – Dữ liệu Base64
+     * @param {string} [mimeType] – Kiểu MIME (tuỳ chọn, Desktop Client bỏ qua nếu không dùng)
+     */
+    sendFileMessage(receiver, fileName, fileSize, isImage, base64Data, mimeType) {
+        const payloadObj = {
+            fileName,
+            fileSize,
+            isImage,
+            base64Data
+        };
+        if (mimeType) payloadObj.mimeType = mimeType;
+
+        const msgObj = {
+            action:    'FILE_TRANSFER',
+            token:     this.token,
+            sender:    this.username,
+            receiver,
+            content:   JSON.stringify(payloadObj),
+            timestamp: Date.now()
+        };
+
+        // _sendJson tự chuyển sang _demoHandleOutbound khi đang ở Demo mode
+        // (trước đây gọi this._simulateEcho – hàm không tồn tại → lỗi TypeError ở Demo).
+        this._sendJson(msgObj);
+    }
+
     /** [Private] Gửi gói LOGOUT trước khi đóng socket. */
     _sendLogoutPacket() {
         if (this.isConnected) {
@@ -289,6 +322,15 @@ class WebSocketClientManager {
             case 'CHAT_GROUP':
             case 'CHAT_SINGLE':
                 if (this.onMessageReceived) this.onMessageReceived(msg);
+                break;
+
+            /* ── Tệp tin / Hình ảnh ── */
+            case 'FILE_TRANSFER':
+                if (this.onFileReceived) {
+                    this.onFileReceived(msg);
+                } else if (this.onMessageReceived) {
+                    this.onMessageReceived(msg);
+                }
                 break;
 
             /* ── Trạng thái gõ phím ── */
