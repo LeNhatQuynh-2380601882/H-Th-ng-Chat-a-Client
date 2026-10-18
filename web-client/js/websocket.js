@@ -11,6 +11,7 @@ class WebSocketClientManager {
         // Event callbacks
         this.onLoginSuccess = null;
         this.onMessageReceived = null;
+        this.onFileReceived = null;
         this.onUserListUpdated = null;
         this.onTyping = null;
         this.onError = null;
@@ -67,13 +68,29 @@ class WebSocketClientManager {
         this.sendJson(payload);
     }
 
-    sendTypingStatus(receiver) {
+    /**
+     * Gửi trạng thái typing theo giao thức thống nhất Desktop↔Web.
+     * state: 'START' khi bắt đầu gõ, 'STOP' khi dừng gõ.
+     * Desktop Client (C#) dùng đúng hai giá trị này.
+     */
+    sendTypingStatus(receiver, state = 'START') {
         const payload = {
             action: 'TYPING',
             token: this.token,
             sender: this.username,
             receiver: receiver,
-            content: 'is_typing'
+            content: state   // 'START' | 'STOP' — khớp với giao thức Desktop
+        };
+        this.sendJson(payload);
+    }
+
+    sendFile(receiver, filePayload) {
+        const payload = {
+            action: 'FILE_TRANSFER',
+            token: this.token,
+            sender: this.username,
+            receiver: receiver,
+            content: typeof filePayload === 'string' ? filePayload : JSON.stringify(filePayload)
         };
         this.sendJson(payload);
     }
@@ -105,6 +122,14 @@ class WebSocketClientManager {
                 case 'CHAT_SINGLE':
                 case 'CHAT_GROUP':
                     if (this.onMessageReceived) this.onMessageReceived(msg);
+                    break;
+
+                case 'FILE_TRANSFER':
+                    if (this.onFileReceived) {
+                        this.onFileReceived(msg);
+                    } else if (this.onMessageReceived) {
+                        this.onMessageReceived(msg);
+                    }
                     break;
 
                 case 'TYPING':

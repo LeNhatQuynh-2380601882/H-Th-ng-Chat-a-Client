@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * Xử lý kết nối TCP Socket của 1 Desktop Client trong Thread riêng biệt.
  * Bắt buộc xử lý framing bằng ký tự phân cách '\n'.
+ * Tích hợp B1/B2: Kiểm tra trùng username nguyên tử và dọn đúng phiên khi ngắt kết nối.
  */
 public class ClientHandler implements Runnable {
     private final Socket socket;
@@ -51,8 +52,8 @@ public class ClientHandler implements Runnable {
         } catch (Exception e) {
             System.err.println("Lỗi kết nối TCP client (" + currentUsername + "): " + e.getMessage());
         } finally {
-            if (currentUsername != null) {
-                clientManager.removeTcpClient(currentUsername);
+            if (currentUsername != null && writer != null) {
+                clientManager.removeTcpClient(currentUsername, writer);
                 System.out.println("Client TCP ngắt kết nối: " + currentUsername);
             }
             try { socket.close(); } catch (Exception ignored) {}
@@ -69,13 +70,17 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
-            this.currentUsername = username;
-            String sessionToken = clientManager.registerUserToken(username);
-            clientManager.addTcpClient(username, writer);
+            String sessionToken = clientManager.registerTcpClient(username, writer);
+            if (sessionToken == null) {
+                sendError("Tên đăng nhập '" + username + "' đã được sử dụng hoặc không hợp lệ. Vui lòng chọn tên khác.");
+                return;
+            }
 
+            this.currentUsername = username;
             ChatMessage resp = new ChatMessage(MessageType.LOGIN_SUCCESS, "SERVER", username, "Đăng nhập thành công!");
             resp.setToken(sessionToken);
             sendJson(resp);
+            clientManager.broadcastUserList();
             System.out.println("TCP Client đăng nhập thành công: " + username);
             return;
         }
@@ -118,7 +123,8 @@ public class ClientHandler implements Runnable {
                 break;
 
             case LOGOUT:
-                clientManager.removeTcpClient(currentUsername);
+                clientManager.removeTcpClient(currentUsername, writer);
+                this.currentUsername = null;
                 break;
 
             default:

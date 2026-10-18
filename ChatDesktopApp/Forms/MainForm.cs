@@ -316,8 +316,16 @@ namespace ChatDesktopApp.Forms
                 return;
             }
 
-            bool isRelevant = string.Equals(msg.Receiver, "ALL", StringComparison.OrdinalIgnoreCase) ||
-                              string.Equals(msg.Receiver, _socketClient.CurrentUsername, StringComparison.OrdinalIgnoreCase);
+            bool isRelevant;
+            if (_targetUser.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+            {
+                isRelevant = string.Equals(msg.Receiver, "ALL", StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                isRelevant = string.Equals(msg.Sender, _targetUser, StringComparison.OrdinalIgnoreCase) &&
+                             string.Equals(msg.Receiver, _socketClient.CurrentUsername, StringComparison.OrdinalIgnoreCase);
+            }
 
             if (!isRelevant) return;
 
@@ -637,11 +645,23 @@ namespace ChatDesktopApp.Forms
         /// <summary>
         /// 2. Khi chọn user khác, chuyển kênh chat và xóa unread badge
         /// </summary>
-        private void lstUsers_SelectedIndexChanged(object sender, EventArgs e)
+        private async void lstUsers_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (lstUsers.SelectedItem != null)
             {
                 string rawUser = ExtractRawUsername(lstUsers.SelectedItem.ToString());
+                if (!string.Equals(rawUser, _targetUser, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_isCurrentlyTyping)
+                    {
+                        _typingDebounceTimer.Stop();
+                        _isCurrentlyTyping = false;
+                        await _socketClient.SendTypingAsync(_targetUser, "STOP");
+                    }
+                    lblTyping.Text = "";
+                    _typingDisplayTimer.Stop();
+                }
+
                 _targetUser = rawUser;
 
                 // Xóa unread badge của user này

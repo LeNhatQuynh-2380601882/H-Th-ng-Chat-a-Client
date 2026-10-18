@@ -120,7 +120,11 @@
 
                 <!-- CHAT INPUT BAR -->
                 <div class="chat-input-bar p-3 border-top border-secondary">
-                    <form id="messageForm" class="d-flex gap-2">
+                    <form id="messageForm" class="d-flex gap-2 align-items-center">
+                        <input type="file" id="fileInput" class="d-none">
+                        <button type="button" class="btn btn-outline-secondary text-light px-3" id="btnAttachFile" title="Gửi tập tin / hình ảnh">
+                            <i class="fa-solid fa-paperclip"></i>
+                        </button>
                         <input type="text" id="messageInput" class="form-control form-control-lg bg-dark text-light border-secondary" placeholder="Nhập nội dung tin nhắn..." autocomplete="off">
                         <button type="submit" class="btn btn-primary px-4 btn-glow fw-bold">
                             <i class="fa-solid fa-paper-plane me-1"></i> GỬI
