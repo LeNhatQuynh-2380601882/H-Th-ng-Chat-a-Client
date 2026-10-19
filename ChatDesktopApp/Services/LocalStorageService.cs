@@ -21,7 +21,8 @@ namespace ChatDesktopApp.Services
             {
                 Directory.CreateDirectory(folder);
             }
-            _storageFilePath = Path.Combine(folder, $"history_{username.ToLowerInvariant()}.json");
+            string safeUser = string.IsNullOrWhiteSpace(username) ? "guest" : username.Trim().ToLowerInvariant();
+            _storageFilePath = Path.Combine(folder, $"history_{safeUser}.json");
         }
 
         public Dictionary<string, List<ChatMessage>> LoadHistory()

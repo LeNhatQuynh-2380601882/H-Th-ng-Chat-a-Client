@@ -10,6 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Quản lý danh sách kết nối Client (TCP Socket & WebSocket), Session Token, Routing và Broadcast tin nhắn.
+ * Đảm bảo đăng ký phiên nguyên tử (Atomic Registration), chống trùng username trên toàn hệ thống và
+ * dọn đúng phiên khi ngắt kết nối (Proper Session Cleanup).
  */
 public class ClientManager {
     private static final ClientManager instance = new ClientManager();
@@ -30,38 +32,99 @@ public class ClientManager {
     }
 
     /**
-     * Tạo token đăng nhập ngẫu nhiên cho user
+     * Kiểm tra username có hợp lệ không (không rỗng, không trùng từ khóa hệ thống).
      */
-    public String registerUserToken(String username) {
+    public boolean isValidUsername(String username) {
+        if (username == null) return false;
+        String trimmed = username.trim();
+        if (trimmed.isEmpty()) return false;
+        if ("ALL".equalsIgnoreCase(trimmed) || "SERVER".equalsIgnoreCase(trimmed)) return false;
+        return true;
+    }
+
+    /**
+     * Kiểm tra username có đang online trên TCP hoặc WebSocket không (case-insensitive).
+     */
+    public synchronized boolean isUserOnline(String username) {
+        if (username == null) return false;
+        for (String u : tcpClients.keySet()) {
+            if (u.equalsIgnoreCase(username)) return true;
+        }
+        for (String u : webClients.keySet()) {
+            if (u.equalsIgnoreCase(username)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Đăng ký nguyên tử (Atomic) cho TCP Client.
+     * @return sessionToken nếu thành công, null nếu username đã online hoặc không hợp lệ.
+     */
+    public synchronized String registerTcpClient(String username, PrintWriter writer) {
+        if (!isValidUsername(username) || writer == null) {
+            return null;
+        }
+        if (isUserOnline(username)) {
+            return null;
+        }
         String token = UUID.randomUUID().toString();
         sessionTokens.put(token, username);
+        tcpClients.put(username, writer);
+        return token;
+    }
+
+    /**
+     * Đăng ký nguyên tử (Atomic) cho Web Client.
+     * @return sessionToken nếu thành công, null nếu username đã online hoặc không hợp lệ.
+     */
+    public synchronized String registerWebClient(String username, WebSocket conn) {
+        if (!isValidUsername(username) || conn == null) {
+            return null;
+        }
+        if (isUserOnline(username)) {
+            return null;
+        }
+        String token = UUID.randomUUID().toString();
+        sessionTokens.put(token, username);
+        webClients.put(username, conn);
         return token;
     }
 
     public boolean validateToken(String token, String username) {
         if (token == null || username == null) return false;
-        return username.equals(sessionTokens.get(token));
+        String registeredUser = sessionTokens.get(token);
+        return registeredUser != null && registeredUser.equalsIgnoreCase(username);
     }
 
-    public void addTcpClient(String username, PrintWriter writer) {
-        tcpClients.put(username, writer);
-        broadcastUserList();
-    }
-
-    public void removeTcpClient(String username) {
-        if (username != null) {
+    /**
+     * Gỡ phiên TCP Client an toàn: chỉ gỡ khi writer khớp với writer của phiên hiện tại.
+     */
+    public synchronized void removeTcpClient(String username, PrintWriter writer) {
+        if (username == null || writer == null) return;
+        PrintWriter currentWriter = tcpClients.get(username);
+        if (currentWriter != null && currentWriter.equals(writer)) {
             tcpClients.remove(username);
-            sessionTokens.values().removeIf(val -> val.equals(username));
+            sessionTokens.values().removeIf(val -> val.equalsIgnoreCase(username));
             broadcastUserList();
         }
     }
 
-    public void addWebClient(String username, WebSocket conn) {
-        webClients.put(username, conn);
-        broadcastUserList();
+    /**
+     * Gỡ phiên TCP Client theo username (fallback).
+     */
+    public synchronized void removeTcpClient(String username) {
+        if (username != null) {
+            tcpClients.remove(username);
+            sessionTokens.values().removeIf(val -> val.equalsIgnoreCase(username));
+            broadcastUserList();
+        }
     }
 
-    public void removeWebClient(WebSocket conn) {
+    /**
+     * Gỡ phiên Web Client an toàn theo đúng đối tượng kết nối WebSocket.
+     */
+    public synchronized void removeWebClient(WebSocket conn) {
+        if (conn == null) return;
         String usernameToRemove = null;
         for (Map.Entry<String, WebSocket> entry : webClients.entrySet()) {
             if (entry.getValue().equals(conn)) {
@@ -71,8 +134,8 @@ public class ClientManager {
         }
         if (usernameToRemove != null) {
             webClients.remove(usernameToRemove);
-            final String targetUser = usernameToRemove;
-            sessionTokens.values().removeIf(val -> val.equals(targetUser));
+            final String finalUser = usernameToRemove;
+            sessionTokens.values().removeIf(val -> val.equalsIgnoreCase(finalUser));
             broadcastUserList();
         }
     }
@@ -111,22 +174,26 @@ public class ClientManager {
 
         // Send to all TCP clients
         for (PrintWriter writer : tcpClients.values()) {
-            writer.print(jsonPayload);
-            writer.flush();
+            try {
+                writer.print(jsonPayload);
+                writer.flush();
+            } catch (Exception ignored) {}
         }
 
         // Send to all WebSocket clients
         for (WebSocket conn : webClients.values()) {
-            if (conn.isOpen()) {
-                conn.send(message.toJson());
-            }
+            try {
+                if (conn.isOpen()) {
+                    conn.send(message.toJson());
+                }
+            } catch (Exception ignored) {}
         }
     }
 
     /**
      * Phát tin nhắn cập nhật danh sách các user đang online
      */
-    public void broadcastUserList() {
+    public synchronized void broadcastUserList() {
         Set<String> onlineUsers = new HashSet<>();
         onlineUsers.addAll(tcpClients.keySet());
         onlineUsers.addAll(webClients.keySet());

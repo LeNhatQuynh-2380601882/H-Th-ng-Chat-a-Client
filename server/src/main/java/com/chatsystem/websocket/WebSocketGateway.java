@@ -11,6 +11,7 @@ import java.net.InetSocketAddress;
 
 /**
  * WebSocket Gateway cho phép Web Client (HTML/JS Trình duyệt) kết nối thời gian thực.
+ * Tích hợp B1/B2: Kiểm tra trùng username nguyên tử và dọn đúng phiên khi ngắt kết nối.
  */
 public class WebSocketGateway extends WebSocketServer {
 
@@ -28,7 +29,7 @@ public class WebSocketGateway extends WebSocketServer {
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         clientManager.removeWebClient(conn);
-        System.out.println(">>> [WebSocket Gateway] Đã ngắt kết nối: " + conn.getRemoteSocketAddress());
+        System.out.println(">>> [WebSocket Gateway] Đã ngắt kết nối: " + (conn != null ? conn.getRemoteSocketAddress() : "null"));
     }
 
     @Override
@@ -54,12 +55,16 @@ public class WebSocketGateway extends WebSocketServer {
                 return;
             }
 
-            String sessionToken = clientManager.registerUserToken(username);
-            clientManager.addWebClient(username, conn);
+            String sessionToken = clientManager.registerWebClient(username, conn);
+            if (sessionToken == null) {
+                sendError(conn, "Tên đăng nhập '" + username + "' đã được sử dụng hoặc không hợp lệ. Vui lòng chọn tên khác.");
+                return;
+            }
 
             ChatMessage resp = new ChatMessage(MessageType.LOGIN_SUCCESS, "SERVER", username, "Đăng nhập WebSocket thành công!");
             resp.setToken(sessionToken);
             conn.send(resp.toJson());
+            clientManager.broadcastUserList();
             System.out.println("Web Client đăng nhập thành công: " + username);
             return;
         }

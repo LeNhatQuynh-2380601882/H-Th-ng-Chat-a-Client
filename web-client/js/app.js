@@ -1,895 +1,523 @@
-/**
- * app.js – Tầng Giao diện (Presentation Layer)
- * ===============================================================
- * Xử lý toàn bộ tương tác DOM, kết nối WebSocketClientManager,
- * quản lý trạng thái UI và hiển thị tin nhắn.
- *
- * Các vấn đề đã xử lý:
- *  ✅ Sửa lỗi tin nhắn chat nhóm bị lặp đôi (duplicate)
- *  ✅ Debounce gửi trạng thái TYPING (tối đa 1 gói / 2.5s)
- *  ✅ Lịch sử tin nhắn tách biệt theo target (ALL / từng user)
- *  ✅ Số tin nhắn chưa đọc trên sidebar
- *  ✅ Chế độ Demo không cần Server
- *  ✅ Hiển thị trạng thái kết nối realtime
- *  ✅ Xuất lịch sử chat ra file .txt
- *  ✅ Gửi / nhận tệp tin và hình ảnh (FILE_TRANSFER – Base64, tối đa 5MB)
- *  ✅ Tự động nhận diện và render hyperlink URL trong tin nhắn
- *
- * Người thực hiện: Trương Hoàng Phúc – MSSV 2380601760
- * Môn: Lập Trình Mạng – Nhóm 11
- */
 document.addEventListener('DOMContentLoaded', () => {
-
-    /* ════════════════════════════════════════════════
-       0. KHỞI TẠO
-    ════════════════════════════════════════════════ */
     const wsManager = new WebSocketClientManager();
 
-    /* ── DOM References ── */
-    const loginScreen     = document.getElementById('loginScreen');
-    const chatScreen      = document.getElementById('chatScreen');
-    const loginForm       = document.getElementById('loginForm');
-    const usernameInput   = document.getElementById('usernameInput');
-    const serverIpInput   = document.getElementById('serverIp');
+    // DOM Elements
+    const loginScreen = document.getElementById('loginScreen');
+    const chatScreen = document.getElementById('chatScreen');
+    const loginForm = document.getElementById('loginForm');
+    const usernameInput = document.getElementById('usernameInput');
+    const serverIpInput = document.getElementById('serverIp');
     const serverPortInput = document.getElementById('serverPort');
-    const chkDemo         = document.getElementById('chkDemo');
-    const btnLogin        = document.getElementById('btnLogin');
-    const loginStatus     = document.getElementById('loginStatus');
+    const btnLogin = document.getElementById('btnLogin');
+    const loginStatus = document.getElementById('loginStatus');
 
-    const displayMyName   = document.getElementById('displayMyName');
-    const myAvatar        = document.getElementById('myAvatar');
-    const btnLogout       = document.getElementById('btnLogout');
-    const userList        = document.getElementById('userList');
-    const searchUser      = document.getElementById('searchUser');
+    const displayMyName = document.getElementById('displayMyName');
+    const myAvatar = document.getElementById('myAvatar');
+    const btnLogout = document.getElementById('btnLogout');
+    const userList = document.getElementById('userList');
+    const searchUser = document.getElementById('searchUser');
 
-    const chatHeaderTitle  = document.getElementById('chatHeaderTitle');
+    const chatHeaderTitle = document.getElementById('chatHeaderTitle');
     const chatHeaderAvatar = document.getElementById('chatHeaderAvatar');
-    const typingIndicator  = document.getElementById('typingIndicator');
-    const chatMessages     = document.getElementById('chatMessages');
-    const messageForm      = document.getElementById('messageForm');
-    const messageInput     = document.getElementById('messageInput');
-    const btnAttachFile    = document.getElementById('btnAttachFile');
-    const fileInput        = document.getElementById('fileInput');
-    const btnToggleSound   = document.getElementById('btnToggleSound');
-    const soundIcon        = document.getElementById('soundIcon');
-    const btnExportChat    = document.getElementById('btnExportChat');
-    const pingValue        = document.getElementById('pingValue');
-    const tokenStatus      = document.getElementById('tokenStatus');
-    const emojiBar         = document.getElementById('emojiBar');
-    const wsStatusDot      = document.getElementById('wsStatusDot');
-    const wsStatusText     = document.getElementById('wsStatusText');
+    const typingIndicator = document.getElementById('typingIndicator');
+    const chatMessages = document.getElementById('chatMessages');
+    const messageForm = document.getElementById('messageForm');
+    const messageInput = document.getElementById('messageInput');
+    const btnAttachFile = document.getElementById('btnAttachFile');
+    const fileInput = document.getElementById('fileInput');
 
-    /* ── Trạng thái ứng dụng ── */
-    let activeTarget   = 'ALL';           // target đang chọn trong sidebar
-    let soundEnabled   = true;
+    let activeTarget = 'ALL';
+    let currentOnlineUsers = [];
 
-    // Lưu lịch sử riêng theo từng target để tránh duplicate & hỗ trợ lọc
-    // chatLog[target] = [ {msg object}, ... ]
-    const chatLog = { ALL: [] };
-
-    // Số tin chưa đọc [target] = count
+    // ─── W4: Lịch sử tin nhắn theo từng cuộc trò chuyện & Unread Badge ─
+    // Key: 'ALL' hoặc username ('Bob', 'Alice'...). Value: Array of message objects
+    const conversationHistory = { 'ALL': [] };
     const unreadCounts = {};
 
-    // Debounce TYPING
-    let typingDebounceTimer = null;
-    const TYPING_DEBOUNCE_MS = 2500;
+    // ─── W1/W2: Typing Indicator State ──────────────────────────────
+    let _isTyping = false;          // Web client đang ở trạng thái gõ chưa gửi STOP
+    let _typingDebounceTimer = null; // Timer debounce gửi STOP sau 1.5s ngừng gõ
+    let _typingDisplayTimer = null;  // Timer tắt indicator khi không nhận STOP (timeout 3s)
 
-    // Typing display timer
-    let typingDisplayTimer = null;
-
-    /* ════════════════════════════════════════════════
-       1. ÂM THANH THÔNG BÁO (Web Audio API)
-    ════════════════════════════════════════════════ */
-    function playNotificationSound() {
-        if (!soundEnabled) return;
-        try {
-            const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-            const osc  = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(587.33, ctx.currentTime);      // D5
-            osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
-            gain.gain.setValueAtTime(0.15, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.28);
-        } catch (_) {/* AudioContext bị khóa trước khi có tương tác người dùng */}
-    }
-
-    /* ════════════════════════════════════════════════
-       2. ĐIỀU KHIỂN NÚT ÂM THANH
-    ════════════════════════════════════════════════ */
-    if (btnToggleSound) {
-        btnToggleSound.addEventListener('click', () => {
-            soundEnabled = !soundEnabled;
-            if (soundEnabled) {
-                soundIcon.className = 'fa-solid fa-bell';
-                btnToggleSound.classList.replace('btn-outline-danger', 'btn-outline-secondary');
-            } else {
-                soundIcon.className = 'fa-solid fa-bell-slash text-danger';
-                btnToggleSound.classList.replace('btn-outline-secondary', 'btn-outline-danger');
+    /**
+     * Reset toàn bộ trạng thái typing của mình (gửi STOP nếu đang typing, dọn timer).
+     * @param {boolean} sendStop - Nếu true và đang typing, gửi gói STOP cho phía đối diện.
+     * @param {string}  targetOverride - target nhận STOP (mặc định dùng activeTarget hiện tại).
+     */
+    function resetTypingState(sendStop = true, targetOverride = null) {
+        if (_typingDebounceTimer !== null) {
+            clearTimeout(_typingDebounceTimer);
+            _typingDebounceTimer = null;
+        }
+        if (_isTyping) {
+            _isTyping = false;
+            if (sendStop && wsManager.isConnected) {
+                const target = targetOverride !== null ? targetOverride : activeTarget;
+                wsManager.sendTypingStatus(target, 'STOP');
             }
-        });
+        }
     }
 
-    /* ════════════════════════════════════════════════
-       3. THANH EMOJI NHANH
-    ════════════════════════════════════════════════ */
-    if (emojiBar) {
-        emojiBar.querySelectorAll('.emoji-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const emoji = btn.getAttribute('data-emoji');
-                if (emoji && messageInput) {
-                    messageInput.value += emoji;
-                    messageInput.focus();
-                }
-            });
-        });
+    function clearIncomingTypingDisplay() {
+        typingIndicator.textContent = '';
+        if (_typingDisplayTimer !== null) {
+            clearTimeout(_typingDisplayTimer);
+            _typingDisplayTimer = null;
+        }
     }
 
-    /* ════════════════════════════════════════════════
-       4. XUẤT LỊCH SỬ CHAT
-    ════════════════════════════════════════════════ */
-    if (btnExportChat) {
-        btnExportChat.addEventListener('click', () => {
-            const allMessages = Object.values(chatLog).flat();
-            allMessages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            if (allMessages.length === 0) {
-                alert('Chưa có tin nhắn nào để xuất lịch sử!');
-                return;
-            }
-            const lines = allMessages.map(m => {
-                const t = new Date(m.timestamp || Date.now()).toLocaleString('vi-VN');
-                let type = '[Cá nhân]';
-                if (m.action === 'CHAT_GROUP') type = '[Nhóm]';
-                else if (m.action === 'FILE_TRANSFER') type = '[File/Ảnh]';
-                let content = m.content;
-                if (m.action === 'FILE_TRANSFER') {
-                    try {
-                        const p = typeof m.content === 'string' ? JSON.parse(m.content) : m.content;
-                        content = p.fileName ? `[File: ${p.fileName}, ${p.fileSize ? (p.fileSize / 1024).toFixed(1) + ' KB' : ''}]` : m.content;
-                    } catch (_) {}
-                }
-                return `[${t}] ${type} ${m.sender} → ${m.receiver}: ${content}`;
-            });
-            const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-            const url  = URL.createObjectURL(blob);
-            const a    = document.createElement('a');
-            a.href     = url;
-            a.download = `chat-log-${Date.now()}.txt`;
-            a.click();
-            URL.revokeObjectURL(url);
-        });
-    }
-
-    /* ════════════════════════════════════════════════
-       5. ĐĂNG NHẬP
-    ════════════════════════════════════════════════ */
+    // ─── Login Form Submit ──────────────────────────────────────────
     loginForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const username = usernameInput.value.trim();
-        const host     = serverIpInput.value.trim();
-        const port     = serverPortInput.value.trim();
-        const demo     = chkDemo?.checked || false;
+        const host = serverIpInput.value.trim();
+        const port = serverPortInput.value.trim();
 
-        if (!username) {
-            setLoginStatus('Vui lòng nhập tên người dùng!', 'danger');
-            return;
-        }
+        if (!username) return;
 
         btnLogin.disabled = true;
-        setLoginStatus(demo
-            ? '⚡ Đang khởi động chế độ Demo (offline)…'
-            : `🔗 Đang kết nối tới ws://${host}:${port}…`, 'info');
+        loginStatus.classList.remove('display-none');
+        loginStatus.className = 'mt-3 small text-info';
+        loginStatus.textContent = 'Đang kết nối tới WebSocket Gateway...';
 
-        wsManager.connect(host, port, username, demo);
+        wsManager.connect(host, port, username);
     });
 
-    function setLoginStatus(msg, type = 'info') {
-        loginStatus.className = `mt-3 small text-${type}`;
-        loginStatus.textContent = msg;
-        loginStatus.classList.remove('display-none');
-    }
-
-    /* ════════════════════════════════════════════════
-       6. WEBSOCKET CALLBACKS
-    ════════════════════════════════════════════════ */
-
-    /* ── 6a. Trạng thái kết nối ── */
-    wsManager.onStatusChange = (status) => {
-        if (!wsStatusDot || !wsStatusText) return;
-        wsStatusDot.className = 'status-dot';
-        switch (status) {
-            case 'connecting':
-                wsStatusDot.classList.add('connecting');
-                wsStatusText.textContent = 'Đang kết nối…';
-                break;
-            case 'connected':
-                wsStatusDot.classList.add('online');
-                wsStatusText.textContent = 'Đã kết nối';
-                break;
-            case 'disconnected':
-                wsStatusDot.classList.add('offline');
-                wsStatusText.textContent = 'Mất kết nối';
-                break;
-        }
-    };
-
-    /* ── 6b. Đăng nhập thành công ── */
+    // ─── WebSocket Callbacks ─────────────────────────────────────────
     wsManager.onLoginSuccess = (msg) => {
         loginScreen.classList.add('display-none');
         chatScreen.classList.remove('display-none');
-
         displayMyName.textContent = wsManager.username;
-        myAvatar.textContent      = wsManager.username.charAt(0).toUpperCase();
+        myAvatar.textContent = wsManager.username.charAt(0).toUpperCase();
 
-        if (tokenStatus && wsManager.token) {
-            tokenStatus.textContent = `Token: ${wsManager.token.substring(0, 8)}…`;
-        }
-
-        appendSystemMessage('Đã kết nối. Chào mừng ' + wsManager.username + ' 👋');
+        // Khởi tạo phòng ALL ban đầu
+        activeTarget = 'ALL';
+        updateChatHeader();
+        renderConversation('ALL');
     };
 
-    /* ── 6c. Đo độ trễ ── */
-    wsManager.onLatencyUpdate = (latency) => {
-        if (!pingValue) return;
-        pingValue.textContent = `${latency} ms`;
-        // Màu theo ngưỡng
-        const badge = pingValue.parentElement;
-        if (!badge) return;
-        badge.classList.remove('text-success', 'text-warning', 'text-danger', 'text-info');
-        if (latency < 50)       badge.classList.add('text-success');
-        else if (latency < 150) badge.classList.add('text-warning');
-        else                    badge.classList.add('text-danger');
-    };
-
-    /* ── 6d. Cập nhật danh sách người dùng online ── */
     wsManager.onUserListUpdated = (users) => {
-        renderUserList(users);
+        currentOnlineUsers = Array.isArray(users) ? users : [];
+        renderUserList();
     };
 
-    /* ── 6e. Nhận tin nhắn ── */
     wsManager.onMessageReceived = (msg) => {
-        // ── FIX: Tránh duplicate tin nhắn ──
-        // Server broadcast CHAT_GROUP về cho TẤT CẢ kể cả người gửi.
-        // app.js đã tự append tin của mình trong messageForm.submit → bỏ qua ở đây.
-        // Trường _demo=true là echo từ Demo mode → cũng bỏ qua (đã append thủ công).
-        if (msg._self || msg._demo) return;
-        // Server thật broadcast lại cho cả người gửi nhưng KHÔNG có cờ _self → lọc theo sender.
-        if (msg.sender === wsManager.username) return;
-
-        const key = _chatKey(msg);
-        if (!chatLog[key]) chatLog[key] = [];
-        chatLog[key].push(msg);
-
-        if (key === activeTarget) {
-            renderBubble(msg, false);
-        } else {
-            // Tin đến từ target không đang xem → tăng badge chưa đọc
-            unreadCounts[key] = (unreadCounts[key] || 0) + 1;
-            _updateUnreadBadge(key);
-            playNotificationSound();
-        }
-
-        // Chỉ phát âm thanh nếu tin là từ người khác VÀ đang ở target này
-        if (key === activeTarget && msg.sender !== wsManager.username) {
-            playNotificationSound();
-        }
+        addMessageToConversation(msg);
     };
 
-    /* ── 6f. Nhận tệp tin / hình ảnh (FILE_TRANSFER) ── */
     wsManager.onFileReceived = (msg) => {
-        if (msg._self || msg._demo) return;
-        if (msg.sender === wsManager.username) return; // echo broadcast của chính mình
-
-        const key = _chatKey(msg);
-        if (!chatLog[key]) chatLog[key] = [];
-        chatLog[key].push(msg);
-
-        if (key === activeTarget) {
-            renderBubble(msg, false);
-        } else {
-            unreadCounts[key] = (unreadCounts[key] || 0) + 1;
-            _updateUnreadBadge(key);
-            playNotificationSound();
-        }
-
-        if (key === activeTarget && msg.sender !== wsManager.username) {
-            playNotificationSound();
-        }
+        addMessageToConversation(msg);
     };
 
-    /* ── 6g. Trạng thái đang gõ ── */
+    // W1+W2: Xử lý typing chỉ khi thuộc cuộc trò chuyện hiện tại
     wsManager.onTyping = (msg) => {
         if (msg.sender === wsManager.username) return;
-        typingIndicator.textContent = `${msg.sender} đang nhập tin nhắn…`;
-        clearTimeout(typingDisplayTimer);
-        typingDisplayTimer = setTimeout(() => {
-            typingIndicator.textContent = '';
-        }, 3000);
+
+        // Kiểm tra xem gói tin typing có thuộc conversation đang mở không
+        let isRelevant = false;
+        if (activeTarget === 'ALL') {
+            isRelevant = (msg.receiver === 'ALL');
+        } else {
+            isRelevant = (msg.sender === activeTarget && (msg.receiver === wsManager.username || !msg.receiver));
+        }
+
+        if (!isRelevant) return;
+
+        const state = (msg.content || '').toUpperCase();
+        if (state === 'STOP') {
+            clearIncomingTypingDisplay();
+        } else {
+            typingIndicator.textContent = `✍️ ${msg.sender} đang nhập tin nhắn...`;
+            if (_typingDisplayTimer !== null) {
+                clearTimeout(_typingDisplayTimer);
+            }
+            _typingDisplayTimer = setTimeout(() => {
+                clearIncomingTypingDisplay();
+            }, 3000);
+        }
     };
 
-    /* ── 6g. Lỗi ── */
     wsManager.onError = (errMsg) => {
         btnLogin.disabled = false;
-        setLoginStatus(`❌ Lỗi: ${errMsg}`, 'danger');
+        loginStatus.classList.remove('display-none');
+        loginStatus.className = 'mt-3 small text-danger';
+        loginStatus.textContent = `Lỗi: ${errMsg}`;
     };
 
-    /* ── 6h. Ngắt kết nối ── */
     wsManager.onClose = () => {
+        resetTypingState(false);
+        clearIncomingTypingDisplay();
+
         loginScreen.classList.remove('display-none');
         chatScreen.classList.add('display-none');
         btnLogin.disabled = false;
-        setLoginStatus('🔌 Đã ngắt kết nối khỏi Server.', 'secondary');
-        // Reset state
-        activeTarget = 'ALL';
-        Object.keys(chatLog).forEach(k => { chatLog[k] = []; });
-        Object.keys(unreadCounts).forEach(k => { delete unreadCounts[k]; });
-        chatMessages.innerHTML = '';
+        loginStatus.textContent = 'Đã ngắt kết nối.';
     };
 
-    /* ════════════════════════════════════════════════
-       7. SIDEBAR – DANH SÁCH NGƯỜI DÙNG
-    ════════════════════════════════════════════════ */
-
-    /**
-     * Render (hoặc cập nhật) danh sách người dùng online trên sidebar.
-     * @param {string[]} users
-     */
-    function renderUserList(users) {
-        // Build set mới
-        const others = users.filter(u => u !== wsManager.username);
-
-        userList.innerHTML = `
-            <div class="user-item p-2 rounded mb-1 d-flex align-items-center gap-2 ${activeTarget === 'ALL' ? 'active' : ''}"
-                 data-target="ALL">
-                <div class="avatar bg-gradient-primary text-white rounded-circle">
-                    <i class="fa-solid fa-users"></i>
-                </div>
-                <div class="flex-grow-1">
-                    <div class="fw-semibold">TẤT CẢ (ALL)</div>
-                    <div class="small text-muted">Chat nhóm Broadcast</div>
-                </div>
-                ${_unreadBadgeHtml('ALL')}
-            </div>`;
-
-        others.forEach(u => {
-            const item = document.createElement('div');
-            item.className = `user-item p-2 rounded mb-1 d-flex align-items-center gap-2 ${activeTarget === u ? 'active' : ''}`;
-            item.setAttribute('data-target', u);
-            item.innerHTML = `
-                <div class="avatar bg-secondary text-white rounded-circle fw-bold">${u.charAt(0).toUpperCase()}</div>
-                <div class="flex-grow-1">
-                    <div class="fw-semibold text-truncate" style="max-width:160px;">${_escHtml(u)}</div>
-                    <div class="small d-flex align-items-center gap-1">
-                        <span class="status-dot online"></span>
-                        <span class="text-success">Online</span>
-                    </div>
-                </div>
-                ${_unreadBadgeHtml(u)}`;
-            userList.appendChild(item);
-        });
-
-        // Gắn sự kiện click
-        userList.querySelectorAll('.user-item').forEach(el => {
-            el.addEventListener('click', () => _switchTarget(el.getAttribute('data-target')));
-        });
-    }
-
-    /** Chuyển target chat (sidebar click). */
-    function _switchTarget(target) {
-        if (activeTarget === target) return;
-        activeTarget = target;
-
-        // Cập nhật active class sidebar
-        userList.querySelectorAll('.user-item').forEach(el => {
-            el.classList.toggle('active', el.getAttribute('data-target') === target);
-        });
-
-        // Reset unread
-        if (unreadCounts[target]) {
-            delete unreadCounts[target];
-            _updateUnreadBadge(target);
+    // ─── W4: Quản lý và nạp tin nhắn theo cuộc trò chuyện ────────────
+    function getConversationKey(msg) {
+        if (msg.action === 'CHAT_GROUP' || msg.receiver === 'ALL') {
+            return 'ALL';
         }
-
-        // Cập nhật header
-        if (target === 'ALL') {
-            chatHeaderTitle.textContent = 'Phòng Chat Nhóm (ALL)';
-            chatHeaderAvatar.innerHTML  = '<i class="fa-solid fa-users"></i>';
-            chatHeaderAvatar.className  = 'avatar bg-gradient-primary text-white rounded-circle fs-5';
-        } else {
-            chatHeaderTitle.textContent = `Chat 1-1 với ${target}`;
-            chatHeaderAvatar.textContent = target.charAt(0).toUpperCase();
-            chatHeaderAvatar.className   = 'avatar bg-secondary text-white rounded-circle fw-bold';
+        if (msg.sender === wsManager.username) {
+            return msg.receiver;
         }
-
-        // Render lại lịch sử của target đó
-        chatMessages.innerHTML = '';
-        appendSystemMessage(`Bạn đang xem cuộc trò chuyện với: ${target === 'ALL' ? 'Tất cả (ALL)' : target}`);
-        const history = chatLog[target] || [];
-        history.forEach(m => renderBubble(m, false));
-    }
-
-    /** Tìm key lưu lịch sử: với CHAT_GROUP / FILE_TRANSFER-ALL = 'ALL', CHAT_SINGLE/FILE_TRANSFER-1v1 = tên partner. */
-    function _chatKey(msg) {
-        if (msg.action === 'CHAT_GROUP') return 'ALL';
-        // FILE_TRANSFER gửi nhóm
-        if (msg.action === 'FILE_TRANSFER' && msg.receiver === 'ALL') return 'ALL';
-        // CHAT_SINGLE hoặc FILE_TRANSFER 1-1: key = partner (người kia)
-        if (msg.sender === wsManager.username) return msg.receiver;
         return msg.sender;
     }
 
-    /** Cập nhật badge số chưa đọc trên sidebar item. */
-    function _updateUnreadBadge(target) {
-        const el = userList.querySelector(`[data-target="${CSS.escape(target)}"] .unread-badge`);
-        const count = unreadCounts[target] || 0;
-        if (el) {
-            if (count > 0) {
-                el.textContent = count > 99 ? '99+' : String(count);
-                el.classList.remove('display-none');
-            } else {
-                el.classList.add('display-none');
-            }
+    function addMessageToConversation(msg) {
+        const convKey = getConversationKey(msg);
+        if (!conversationHistory[convKey]) {
+            conversationHistory[convKey] = [];
+        }
+
+        const normalizedMsg = {
+            sender: msg.sender,
+            receiver: msg.receiver,
+            content: msg.content,
+            action: msg.action,
+            timestamp: msg.timestamp || Date.now()
+        };
+
+        conversationHistory[convKey].push(normalizedMsg);
+
+        if (convKey === activeTarget) {
+            appendMessageToDOM(normalizedMsg);
+        } else {
+            unreadCounts[convKey] = (unreadCounts[convKey] || 0) + 1;
+            renderUserList();
         }
     }
 
-    function _unreadBadgeHtml(target) {
-        const count = unreadCounts[target] || 0;
-        return `<span class="unread-badge ${count > 0 ? '' : 'display-none'}">${count > 99 ? '99+' : count}</span>`;
+    function renderConversation(targetKey) {
+        chatMessages.innerHTML = '';
+        const list = conversationHistory[targetKey] || [];
+
+        if (list.length === 0) {
+            const emptyNotice = document.createElement('div');
+            emptyNotice.className = 'system-message text-center my-4';
+            const text = (targetKey === 'ALL')
+                ? 'Chưa có tin nhắn trong phòng Chat Nhóm (ALL).'
+                : `Chưa có tin nhắn với ${targetKey}. Hãy gửi lời chào!`;
+            emptyNotice.innerHTML = `<span class="badge bg-secondary opacity-75 px-3 py-2">${text}</span>`;
+            chatMessages.appendChild(emptyNotice);
+        } else {
+            list.forEach(msg => appendMessageToDOM(msg));
+        }
+
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    /* ════════════════════════════════════════════════
-       8. GỬI TIN NHẮN
-    ════════════════════════════════════════════════ */
+    // ─── W5: Hiển thị Bong bóng Tin nhắn và File Đính kèm ─────────────
+    function appendMessageToDOM(msg) {
+        const isSelf = msg.sender === wsManager.username;
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const bubble = document.createElement('div');
+        bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
+
+        const senderLabel = isSelf ? 'Bạn' : msg.sender;
+        const typeLabel = (msg.action === 'CHAT_GROUP' || msg.receiver === 'ALL') ? '[Nhóm]' : '[Cá nhân]';
+
+        let bodyHtml = '';
+
+        if (msg.action === 'FILE_TRANSFER') {
+            let filePayload = null;
+            try {
+                filePayload = typeof msg.content === 'object' ? msg.content : JSON.parse(msg.content);
+            } catch (e) {
+                filePayload = null;
+            }
+
+            if (filePayload && filePayload.base64Data) {
+                const fileNameSafe = escapeHtml(filePayload.fileName || 'file');
+                const fileSizeFormatted = formatBytes(filePayload.fileSize || 0);
+
+                if (filePayload.isImage) {
+                    const imgSrc = `data:image/*;base64,${filePayload.base64Data}`;
+                    bodyHtml = `
+                        <div class="file-attachment image-attachment mb-2">
+                            <img src="${imgSrc}" class="img-fluid rounded border border-secondary shadow-sm" style="max-height: 250px; object-fit: contain; cursor: pointer;" alt="${fileNameSafe}">
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between gap-2 small">
+                            <span class="text-truncate fw-semibold" style="max-width: 180px;">${fileNameSafe}</span>
+                            <span class="text-muted">${fileSizeFormatted}</span>
+                            <button type="button" class="btn btn-sm btn-outline-info py-0 px-2 btn-download-file">
+                                <i class="fa-solid fa-download"></i> Tải ảnh
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    bodyHtml = `
+                        <div class="file-attachment p-2 rounded bg-dark bg-opacity-50 border border-secondary d-flex align-items-center gap-3 mb-2">
+                            <i class="fa-solid fa-file-arrow-down fa-2x text-warning"></i>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="fw-bold text-truncate" style="max-width: 200px;">${fileNameSafe}</div>
+                                <div class="text-muted small">${fileSizeFormatted}</div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-primary py-1 px-3 btn-download-file">
+                                <i class="fa-solid fa-download me-1"></i> Tải về
+                            </button>
+                        </div>
+                    `;
+                }
+
+                // Gắn listener tải file sau khi tạo bubble
+                setTimeout(() => {
+                    const btnDownload = bubble.querySelector('.btn-download-file');
+                    const imgElem = bubble.querySelector('img');
+                    if (btnDownload) {
+                        btnDownload.addEventListener('click', () => {
+                            downloadBase64(filePayload.base64Data, filePayload.fileName || 'downloaded_file');
+                        });
+                    }
+                    if (imgElem) {
+                        imgElem.addEventListener('click', () => {
+                            downloadBase64(filePayload.base64Data, filePayload.fileName || 'downloaded_file');
+                        });
+                    }
+                }, 0);
+            } else {
+                bodyHtml = `<div class="text-muted fst-italic">[Tệp đính kèm không khả dụng]</div>`;
+            }
+        } else {
+            bodyHtml = `<div>${escapeHtml(msg.content)}</div>`;
+        }
+
+        bubble.innerHTML = `
+            <div class="fw-bold small mb-1">${senderLabel} <span class="opacity-50 font-monospace" style="font-size:10px">${typeLabel}</span></div>
+            ${bodyHtml}
+            <div class="msg-meta text-end mt-1">${timeStr}</div>
+        `;
+
+        chatMessages.appendChild(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function downloadBase64(base64Data, fileName) {
+        try {
+            const link = document.createElement('a');
+            link.href = 'data:application/octet-stream;base64,' + base64Data;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            alert('Không thể tải file: ' + err.message);
+        }
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ─── Render Online User List & Switch Conversation ──────────────
+    function updateChatHeader() {
+        if (activeTarget === 'ALL') {
+            chatHeaderTitle.textContent = 'Phòng Chat Nhóm (ALL)';
+            chatHeaderAvatar.innerHTML = '<i class="fa-solid fa-users"></i>';
+        } else {
+            chatHeaderTitle.textContent = `Chat 1-1 với ${activeTarget}`;
+            chatHeaderAvatar.innerHTML = activeTarget.charAt(0).toUpperCase();
+        }
+    }
+
+    function renderUserList() {
+        const query = (searchUser.value || '').trim().toLowerCase();
+
+        // 1. ALL Item
+        const allUnread = unreadCounts['ALL'] || 0;
+        const allUnreadBadge = allUnread > 0
+            ? `<span class="badge bg-danger rounded-pill">${allUnread}</span>`
+            : '';
+
+        userList.innerHTML = `
+            <div class="user-item p-2 rounded mb-1 d-flex align-items-center justify-content-between gap-2 ${activeTarget === 'ALL' ? 'active' : ''}" data-target="ALL">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="avatar bg-gradient-primary text-white rounded-circle"><i class="fa-solid fa-users"></i></div>
+                    <div>
+                        <div class="fw-semibold">TẤT CẢ (ALL)</div>
+                        <div class="small text-muted">Chat nhóm Broadcast</div>
+                    </div>
+                </div>
+                ${allUnreadBadge}
+            </div>
+        `;
+
+        // 2. Các user online
+        currentOnlineUsers.forEach(u => {
+            if (u !== wsManager.username) {
+                if (query && !u.toLowerCase().includes(query)) {
+                    return; // Bỏ qua nếu không khớp từ khóa tìm kiếm
+                }
+
+                const count = unreadCounts[u] || 0;
+                const unreadBadge = count > 0
+                    ? `<span class="badge bg-danger rounded-pill">${count}</span>`
+                    : '';
+
+                const item = document.createElement('div');
+                item.className = `user-item p-2 rounded mb-1 d-flex align-items-center justify-content-between gap-2 ${activeTarget === u ? 'active' : ''}`;
+                item.setAttribute('data-target', u);
+                item.innerHTML = `
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar bg-secondary text-white rounded-circle fw-bold">${u.charAt(0).toUpperCase()}</div>
+                        <div>
+                            <div class="fw-semibold">${u}</div>
+                            <div class="small text-success"><i class="fa-solid fa-circle me-1" style="font-size: 8px;"></i>Online</div>
+                        </div>
+                    </div>
+                    ${unreadBadge}
+                `;
+                userList.appendChild(item);
+            }
+        });
+
+        // 3. Gắn sự kiện click chuyển conversation
+        userList.querySelectorAll('.user-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const newTarget = el.getAttribute('data-target');
+
+                if (newTarget !== activeTarget) {
+                    // Dọn typing state của mình (gửi STOP cho target cũ)
+                    resetTypingState(true, activeTarget);
+                    // Dọn typing display của người khác trên header
+                    clearIncomingTypingDisplay();
+
+                    activeTarget = newTarget;
+                    // Xóa unread count của conversation mới chọn
+                    unreadCounts[activeTarget] = 0;
+
+                    updateChatHeader();
+                    renderConversation(activeTarget);
+                    renderUserList();
+                }
+            });
+        });
+    }
+
+    searchUser.addEventListener('input', () => {
+        renderUserList();
+    });
+
+    // ─── Gửi tin nhắn text (W1/W2 debounce + STOP trước khi gửi) ─────
     messageForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = messageInput.value.trim();
-        if (!text || !wsManager.isConnected) return;
+        if (!text) return;
 
-        // Gửi lên Server / Demo
+        // Gửi STOP typing trước khi gửi tin nhắn (nếu đang ở trạng thái typing)
+        if (_isTyping) {
+            clearTimeout(_typingDebounceTimer);
+            _typingDebounceTimer = null;
+            _isTyping = false;
+            wsManager.sendTypingStatus(activeTarget, 'STOP');
+        }
+
         wsManager.sendChatMessage(activeTarget, text);
 
-        // Append ngay lập tức cho người gửi (không chờ echo từ Server)
-        // Đánh dấu _self=true để callback onMessageReceived bỏ qua
         const selfMsg = {
-            _self:     true,
-            action:    activeTarget === 'ALL' ? 'CHAT_GROUP' : 'CHAT_SINGLE',
-            sender:    wsManager.username,
-            receiver:  activeTarget,
-            content:   text,
+            sender: wsManager.username,
+            receiver: activeTarget,
+            content: text,
+            action: activeTarget === 'ALL' ? 'CHAT_GROUP' : 'CHAT_SINGLE',
             timestamp: Date.now()
         };
-        // Lưu vào log
-        const key = _chatKey(selfMsg);
-        if (!chatLog[key]) chatLog[key] = [];
-        chatLog[key].push(selfMsg);
+        addMessageToConversation(selfMsg);
 
-        renderBubble(selfMsg, false);
         messageInput.value = '';
     });
 
-    /* ════════════════════════════════════════════════
-       9. TRẠNG THÁI ĐANG GÕ (Debounce)
-    ════════════════════════════════════════════════ */
+    // Debounce gõ phím gửi START/STOP
     messageInput.addEventListener('input', () => {
-        if (!wsManager.isConnected || messageInput.value.length === 0) return;
+        if (!wsManager.isConnected) return;
 
-        // Debounce: chỉ gửi TYPING sau khi người dùng dừng gõ đủ thời gian,
-        // hoặc ngay lập tức nếu lần đầu (timer chưa chạy).
-        if (!typingDebounceTimer) {
-            wsManager.sendTypingStatus(activeTarget);
+        if (messageInput.value.length > 0) {
+            if (!_isTyping) {
+                _isTyping = true;
+                wsManager.sendTypingStatus(activeTarget, 'START');
+            }
+            clearTimeout(_typingDebounceTimer);
+            _typingDebounceTimer = setTimeout(() => {
+                if (_isTyping) {
+                    _isTyping = false;
+                    wsManager.sendTypingStatus(activeTarget, 'STOP');
+                }
+                _typingDebounceTimer = null;
+            }, 1500);
+        } else {
+            if (_isTyping) {
+                clearTimeout(_typingDebounceTimer);
+                _typingDebounceTimer = null;
+                _isTyping = false;
+                wsManager.sendTypingStatus(activeTarget, 'STOP');
+            }
         }
-        clearTimeout(typingDebounceTimer);
-        typingDebounceTimer = setTimeout(() => {
-            typingDebounceTimer = null;
-        }, TYPING_DEBOUNCE_MS);
     });
 
-    /* ════════════════════════════════════════════════
-       10. BỘ LỌC TÌM KIẾM USER TRÊN SIDEBAR
-    ════════════════════════════════════════════════ */
-    if (searchUser) {
-        searchUser.addEventListener('input', () => {
-            const q = searchUser.value.trim().toLowerCase();
-            userList.querySelectorAll('.user-item').forEach(item => {
-                const t = (item.getAttribute('data-target') || '').toLowerCase();
-                item.style.display = (t === 'all' || t.includes(q)) ? '' : 'none';
-            });
-        });
-    }
+    // ─── Gửi File từ Web sang Desktop / Web khác (W5) ───────────────
+    btnAttachFile.addEventListener('click', () => {
+        fileInput.click();
+    });
 
-    /* ════════════════════════════════════════════════
-       11. ĐĂNG XUẤT
-    ════════════════════════════════════════════════ */
-    if (btnLogout) {
-        btnLogout.addEventListener('click', () => {
-            wsManager.disconnect();
-        });
-    }
-
-    /* ════════════════════════════════════════════════
-       11b. GỬI FILE / HÌNH ẢNH
-       – Nút 📎 (chọn nhiều tệp), dán ảnh Ctrl+V, kéo-thả vào khung chat
-    ════════════════════════════════════════════════ */
-    const MAX_FILE_SIZE = 5 * 1024 * 1024;               // 5MB – đồng bộ với Desktop Client
-    const IMAGE_EXT_RE  = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
-
-    /**
-     * Đọc 1 tệp → Base64 → gửi FILE_TRANSFER và hiển thị ngay cho người gửi.
-     * @param {File} file
-     */
-    function sendFile(file) {
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
         if (!file) return;
-        if (!wsManager.isConnected) {
-            alert('Chưa kết nối tới Server!');
-            return;
-        }
-        if (file.size > MAX_FILE_SIZE) {
-            appendSystemMessage(`⚠️ "${file.name}" (${_formatFileSize(file.size)}) vượt quá 5MB – không gửi được.`);
+
+        // Giới hạn an toàn 15MB để tránh quá tải bộ nhớ socket
+        if (file.size > 15 * 1024 * 1024) {
+            alert('Kích thước tệp vượt quá giới hạn 15MB!');
+            fileInput.value = '';
             return;
         }
 
-        // Chốt người nhận tại thời điểm chọn tệp (tránh đổi tab trong lúc đang đọc file)
-        const target = activeTarget;
         const reader = new FileReader();
+        reader.onload = () => {
+            const resultStr = reader.result; // DataURL: data:mime;base64,....
+            const base64Content = resultStr.split(',')[1];
+            const isImage = file.type.startsWith('image/');
 
-        reader.onload = (e) => {
-            const base64Data = String(e.target.result).split(',')[1] || '';
-            const mimeType   = file.type || _guessMime(file.name);
-            const isImage    = mimeType.startsWith('image/') || IMAGE_EXT_RE.test(file.name);
+            const payload = {
+                fileName: file.name,
+                fileSize: file.size,
+                isImage: isImage,
+                base64Data: base64Content
+            };
 
-            wsManager.sendFileMessage(target, file.name, file.size, isImage, base64Data, mimeType);
+            wsManager.sendFile(activeTarget, payload);
 
-            const selfMsg = {
-                _self:     true,
-                action:    'FILE_TRANSFER',
-                sender:    wsManager.username,
-                receiver:  target,
-                content:   JSON.stringify({ fileName: file.name, fileSize: file.size, isImage, base64Data, mimeType }),
+            const selfFileMsg = {
+                sender: wsManager.username,
+                receiver: activeTarget,
+                content: payload,
+                action: 'FILE_TRANSFER',
                 timestamp: Date.now()
             };
-            const key = _chatKey(selfMsg);
-            if (!chatLog[key]) chatLog[key] = [];
-            chatLog[key].push(selfMsg);
-            if (key === activeTarget) renderBubble(selfMsg, false);
+            addMessageToConversation(selfFileMsg);
+
+            fileInput.value = '';
         };
-        reader.onerror = () => appendSystemMessage(`❌ Không đọc được tệp "${file.name}".`);
+
+        reader.onerror = () => {
+            alert('Lỗi đọc tệp tin!');
+            fileInput.value = '';
+        };
+
         reader.readAsDataURL(file);
-    }
-
-    /* ── Nút 📎 ── */
-    if (btnAttachFile && fileInput) {
-        btnAttachFile.addEventListener('click', () => {
-            if (!wsManager.isConnected) {
-                alert('Chưa kết nối tới Server!');
-                return;
-            }
-            fileInput.value = '';
-            fileInput.click();
-        });
-
-        fileInput.addEventListener('change', () => {
-            Array.from(fileInput.files || []).forEach(sendFile);
-            fileInput.value = '';
-        });
-    }
-
-    /* ── Dán ảnh / tệp từ clipboard (Ctrl+V) vào ô nhập ── */
-    messageInput.addEventListener('paste', (e) => {
-        const files = Array.from(e.clipboardData?.files || []);
-        if (files.length === 0) return;             // dán chữ / link bình thường
-        e.preventDefault();
-        files.forEach((f, i) => {
-            // Ảnh chụp màn hình thường tên "image.png" → đặt tên dễ phân biệt hơn
-            if (/^image\.\w+$/i.test(f.name)) {
-                const ext = f.name.split('.').pop();
-                f = new File([f], `anh-dan-${Date.now()}${i ? '-' + i : ''}.${ext}`, { type: f.type });
-            }
-            sendFile(f);
-        });
     });
 
-    /* ── Kéo-thả tệp vào khung chat ── */
-    const chatMain = document.querySelector('.chat-main');
-    if (chatMain) {
-        let dragDepth = 0;
-        const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
-
-        chatMain.addEventListener('dragenter', (e) => {
-            if (!hasFiles(e)) return;
-            e.preventDefault();
-            dragDepth++;
-            chatMain.classList.add('drag-over');
-        });
-        chatMain.addEventListener('dragover', (e) => {
-            if (!hasFiles(e)) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
-        });
-        chatMain.addEventListener('dragleave', () => {
-            dragDepth = Math.max(0, dragDepth - 1);
-            if (dragDepth === 0) chatMain.classList.remove('drag-over');
-        });
-        chatMain.addEventListener('drop', (e) => {
-            if (!hasFiles(e)) return;
-            e.preventDefault();
-            dragDepth = 0;
-            chatMain.classList.remove('drag-over');
-            Array.from(e.dataTransfer.files || []).forEach(sendFile);
-        });
-    }
-
-    /* ── Click trong khung chat: xem ảnh lớn / tải tệp (event delegation) ── */
-    chatMessages.addEventListener('click', (e) => {
-        const el = e.target.closest('[data-action]');
-        if (!el) return;
-        const action = el.getAttribute('data-action');
-
-        if (action === 'view-image') {
-            e.preventDefault();
-            _openLightbox(el.getAttribute('src'), el.getAttribute('alt') || '');
-        } else if (action === 'download') {
-            e.preventDefault();
-            const bubble = el.closest('.message-bubble');
-            const payload = bubble && _parseFilePayload(bubble._msg?.content);
-            if (payload) _downloadPayload(payload);
-        }
+    btnLogout.addEventListener('click', () => {
+        resetTypingState(true, activeTarget);
+        wsManager.disconnect();
     });
-
-    /* ── Lightbox xem ảnh ── */
-    const lightbox      = document.getElementById('imageLightbox');
-    const lightboxImg   = document.getElementById('lightboxImg');
-    const lightboxCap   = document.getElementById('lightboxCaption');
-
-    function _openLightbox(src, caption) {
-        if (!lightbox || !lightboxImg) { window.open(src, '_blank', 'noopener'); return; }
-        lightboxImg.src = src;
-        lightboxImg.alt = caption;
-        if (lightboxCap) lightboxCap.textContent = caption;
-        lightbox.classList.remove('display-none');
-    }
-    function _closeLightbox() {
-        if (!lightbox) return;
-        lightbox.classList.add('display-none');
-        lightboxImg.removeAttribute('src');
-    }
-    if (lightbox) {
-        lightbox.addEventListener('click', (e) => {
-            if (e.target !== lightboxImg) _closeLightbox();
-        });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') _closeLightbox();
-        });
-    }
-
-    /* ════════════════════════════════════════════════
-       12. RENDER TIN NHẮN
-    ════════════════════════════════════════════════ */
-
-    /**
-     * Tạo bubble tin nhắn và chèn vào khung chat.
-     * @param {Object} msg
-     * @param {boolean} [prepend=false] – Thêm lên đầu (dành cho load lịch sử ngược)
-     */
-    function renderBubble(msg, prepend = false) {
-        const isSelf  = msg.sender === wsManager.username;
-        const timeStr = new Date(msg.timestamp || Date.now())
-            .toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-        let typeLabel = '[Cá nhân]';
-        if (msg.action === 'CHAT_GROUP') typeLabel = '[Nhóm]';
-        else if (msg.action === 'FILE_TRANSFER') typeLabel = '[File/Ảnh]';
-
-        const bodyHtml = msg.action === 'FILE_TRANSFER'
-            ? _buildFileBody(msg)
-            : `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
-
-        const bubble = document.createElement('div');
-        bubble.className = `message-bubble ${isSelf ? 'outgoing' : 'incoming'}`;
-        bubble._msg = msg; // giữ tham chiếu để nút "Tải xuống" lấy lại payload
-        bubble.innerHTML = `
-            <div class="msg-sender">${isSelf ? 'Bạn' : _escHtml(msg.sender)}
-                <span class="opacity-50 font-monospace" style="font-size:10px;font-weight:400"> ${typeLabel}</span>
-            </div>
-            ${bodyHtml}
-            <div class="msg-meta">${timeStr}</div>`;
-
-        if (prepend && chatMessages.firstChild) {
-            chatMessages.insertBefore(bubble, chatMessages.firstChild);
-        } else {
-            chatMessages.appendChild(bubble);
-            requestAnimationFrame(() => {
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            });
-        }
-    }
-
-    /** Thêm thông báo hệ thống (dòng xám giữa màn hình chat). */
-    function appendSystemMessage(text) {
-        const div = document.createElement('div');
-        div.className = 'system-message text-center my-2';
-        div.innerHTML = `<span class="badge bg-secondary opacity-75">${_escHtml(text)}</span>`;
-        chatMessages.appendChild(div);
-        requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
-    }
-
-    /* ════════════════════════════════════════════════
-       13. HELPER
-    ════════════════════════════════════════════════ */
-
-    /** Escape HTML để chống XSS. */
-    function _escHtml(text) {
-        const d = document.createElement('div');
-        d.textContent = String(text ?? '');
-        return d.innerHTML;
-    }
-
-    /** Định dạng dung lượng byte thành B, KB, MB */
-    function _formatFileSize(bytes) {
-        if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-    }
-
-    /**
-     * Tự động nhận diện link (http://, https://, www.) – an toàn XSS.
-     * Escape từng đoạn riêng (không chèn chuỗi đã escape vào href) và loại dấu ' " < >
-     * khỏi URL để không thể "thoát" khỏi thuộc tính HTML.
-     * Link trỏ tới ảnh (.png/.jpg/.gif/.webp…) được hiển thị kèm ảnh xem trước.
-     */
-    function _formatMessageText(text) {
-        const raw = String(text ?? '');
-        const urlRegex = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
-        let html = '';
-        let last = 0;
-        const imagePreviews = [];
-
-        for (const m of raw.matchAll(urlRegex)) {
-            let url = m[0];
-            // Bỏ dấu câu dính cuối link: "xem https://abc.com." → không lấy dấu chấm
-            const trail = url.match(/[.,!?;:)\]]+$/);
-            if (trail) url = url.slice(0, -trail[0].length);
-            if (!url) continue;
-
-            const href = /^www\./i.test(url) ? `https://${url}` : url;
-            html += _escHtml(raw.slice(last, m.index));
-            html += `<a href="${_escAttr(href)}" target="_blank" rel="noopener noreferrer" class="chat-link">${_escHtml(url)}</a>`;
-            last = m.index + url.length;
-
-            if (/\.(png|jpe?g|gif|webp|bmp|svg)(\?[^#]*)?(#.*)?$/i.test(href) && imagePreviews.length < 3) {
-                imagePreviews.push(href);
-            }
-        }
-        html += _escHtml(raw.slice(last));
-        html = html.replace(/\n/g, '<br>');
-
-        imagePreviews.forEach(src => {
-            html += `<div class="mt-1"><img src="${_escAttr(src)}" alt="Ảnh từ link" class="chat-img-preview chat-link-img"
-                         data-action="view-image" loading="lazy" referrerpolicy="no-referrer"
-                         onerror="this.parentElement.remove()"></div>`;
-        });
-        return html;
-    }
-
-    /** Escape cho giá trị thuộc tính HTML. */
-    function _escAttr(text) {
-        return String(text ?? '')
-            .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    /* ── FILE_TRANSFER helpers ── */
-
-    const MIME_BY_EXT = {
-        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
-        bmp: 'image/bmp', svg: 'image/svg+xml', pdf: 'application/pdf', txt: 'text/plain',
-        zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
-        doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        mp3: 'audio/mpeg', mp4: 'video/mp4', json: 'application/json', csv: 'text/csv'
-    };
-
-    function _fileExt(name) {
-        const m = String(name || '').match(/\.([a-z0-9]+)$/i);
-        return m ? m[1].toLowerCase() : '';
-    }
-
-    function _guessMime(name) {
-        return MIME_BY_EXT[_fileExt(name)] || 'application/octet-stream';
-    }
-
-    /** Icon FontAwesome theo loại tệp. */
-    function _fileIcon(name) {
-        const ext = _fileExt(name);
-        if (ext === 'pdf') return 'fa-file-pdf text-danger';
-        if (['doc', 'docx'].includes(ext)) return 'fa-file-word text-primary';
-        if (['xls', 'xlsx', 'csv'].includes(ext)) return 'fa-file-excel text-success';
-        if (['ppt', 'pptx'].includes(ext)) return 'fa-file-powerpoint text-warning';
-        if (['zip', 'rar', '7z'].includes(ext)) return 'fa-file-zipper text-warning';
-        if (['mp3', 'wav', 'ogg'].includes(ext)) return 'fa-file-audio text-info';
-        if (['mp4', 'mov', 'avi', 'mkv'].includes(ext)) return 'fa-file-video text-info';
-        if (['js', 'java', 'cs', 'html', 'css', 'json', 'xml', 'py'].includes(ext)) return 'fa-file-code text-info';
-        return 'fa-file-lines text-info';
-    }
-
-    /**
-     * Parse + kiểm tra payload FILE_TRANSFER (định dạng chung với Desktop: fileName, fileSize, isImage, base64Data).
-     * Trả về null nếu không hợp lệ → hiển thị như text thường.
-     */
-    function _parseFilePayload(content) {
-        let p;
-        try {
-            p = typeof content === 'string' ? JSON.parse(content) : content;
-        } catch (_) {
-            return null;
-        }
-        if (!p || typeof p.fileName !== 'string' || typeof p.base64Data !== 'string') return null;
-        // Chỉ chấp nhận ký tự Base64 hợp lệ → không thể chèn mã HTML qua src="data:..."
-        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(p.base64Data)) return null;
-        if (p.mimeType && !/^[\w.+-]+\/[\w.+-]+$/.test(p.mimeType)) p.mimeType = '';
-        return p;
-    }
-
-    /** HTML phần thân bubble cho FILE_TRANSFER (ảnh xem trước hoặc thẻ tệp). */
-    function _buildFileBody(msg) {
-        const p = _parseFilePayload(msg.content);
-        if (!p) return `<div class="msg-text">${_formatMessageText(msg.content)}</div>`;
-
-        const name = _escHtml(p.fileName);
-        const size = _formatFileSize(p.fileSize);
-        const mime = p.mimeType || _guessMime(p.fileName);
-
-        if (p.isImage) {
-            const imgMime = mime.startsWith('image/') ? mime : 'image/png';
-            return `
-                <div class="msg-file-image my-1">
-                    <img src="data:${imgMime};base64,${p.base64Data}" alt="${_escAttr(p.fileName)}"
-                         class="chat-img-preview" data-action="view-image" title="Bấm để xem ảnh lớn">
-                    <div class="small opacity-75 mt-1 d-flex align-items-center justify-content-between gap-2">
-                        <span class="text-truncate"><i class="fa-solid fa-image me-1"></i>${name}</span>
-                        <span class="flex-shrink-0">${size}
-                            <a href="#" data-action="download" class="ms-2 text-info" title="Tải ảnh xuống"><i class="fa-solid fa-download"></i></a>
-                        </span>
-                    </div>
-                </div>`;
-        }
-
-        return `
-            <div class="msg-file-card p-2 d-flex align-items-center gap-3 my-1">
-                <div class="file-icon fs-3"><i class="fa-solid ${_fileIcon(p.fileName)}"></i></div>
-                <div class="flex-grow-1 overflow-hidden">
-                    <div class="fw-semibold text-truncate small" title="${_escAttr(p.fileName)}">${name}</div>
-                    <div class="small opacity-75">${size}</div>
-                </div>
-                <button type="button" data-action="download" class="btn btn-sm btn-outline-info flex-shrink-0" title="Tải xuống tệp">
-                    <i class="fa-solid fa-download"></i>
-                </button>
-            </div>`;
-    }
-
-    /** Giải mã Base64 → Blob → tải xuống với đúng tên tệp. */
-    function _downloadPayload(p) {
-        try {
-            const bin = atob(p.base64Data);
-            const bytes = new Uint8Array(bin.length);
-            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            const blob = new Blob([bytes], { type: p.mimeType || _guessMime(p.fileName) });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = p.fileName || 'tep-tin';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-        } catch (e) {
-            console.error('[FILE] Lỗi giải mã tệp:', e);
-            alert('Không thể tải tệp – dữ liệu bị lỗi.');
-        }
-    }
-
-}); // end DOMContentLoaded
+});
