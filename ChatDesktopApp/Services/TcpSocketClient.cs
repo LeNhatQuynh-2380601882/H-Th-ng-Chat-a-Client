@@ -24,8 +24,11 @@ namespace ChatDesktopApp.Services
         private TcpClient _tcpClient;
         private NetworkStream _stream;
         private CancellationTokenSource _cts;
+        private CancellationTokenSource _reconnectCts;
         private bool _isConnected;
         private readonly object _disconnectLock = new object();
+        private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
+        private int _reconnectLock = 0; // 0 = idle, 1 = đang chạy reconnect loop
 
         // ─── Thông tin phiên (để reconnect) ────────────────────────────────
         private string _lastIp;
@@ -38,11 +41,28 @@ namespace ChatDesktopApp.Services
         public event Action OnDisconnected;
         public event Action OnConnected;
         public event Action<int> OnReconnecting; // Tham số: số lần thử hiện tại
+        public event Action OnLoginSuccess;
+        public event Action<string> OnLoginFailed;
 
         // ─── Thuộc tính trạng thái ─────────────────────────────────────────
         public string CurrentUsername { get; private set; }
         public string SessionToken { get; set; }
-        public bool IsConnected => _isConnected && _tcpClient != null && _tcpClient.Connected;
+        public bool IsAuthenticated { get; private set; }
+        public bool IsConnected
+        {
+            get
+            {
+                try
+                {
+                    var client = _tcpClient;
+                    return _isConnected && client != null && client.Connected;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
 
         // ══════════════════════════════════════════════════════════════════
         // PHẦN 1: VALIDATION USERNAME
@@ -85,21 +105,28 @@ namespace ChatDesktopApp.Services
         {
             try
             {
-                Disconnect(); // Đóng kết nối cũ nếu có
+                lock (_disconnectLock)
+                {
+                    CloseSocketResources();
+                }
 
                 // Lưu thông tin để dùng khi auto-reconnect
                 _lastIp   = ip;
                 _lastPort = port;
 
-                _tcpClient = new TcpClient();
+                var client = new TcpClient();
+                _tcpClient = client;
 
                 // Timeout 5 giây: tránh treo UI khi Server không phản hồi
-                var connectTask = _tcpClient.ConnectAsync(ip, port);
+                var connectTask = client.ConnectAsync(ip, port);
                 if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
+                {
+                    try { client.Close(); } catch { }
                     throw new SocketException(10060); // WSAETIMEDOUT
+                }
                 await connectTask; // propagate exception nếu có lỗi
 
-                _stream      = _tcpClient.GetStream();
+                _stream      = client.GetStream();
                 _isConnected = true;
                 _cts         = new CancellationTokenSource();
 
@@ -113,13 +140,19 @@ namespace ChatDesktopApp.Services
             catch (SocketException ex)
             {
                 OnErrorOccurred?.Invoke($"Không thể kết nối tới Server ({ip}:{port}): {ex.Message}");
-                Disconnect();
+                lock (_disconnectLock)
+                {
+                    CloseSocketResources();
+                }
                 return false;
             }
             catch (Exception ex)
             {
                 OnErrorOccurred?.Invoke($"Lỗi kết nối: {ex.Message}");
-                Disconnect();
+                lock (_disconnectLock)
+                {
+                    CloseSocketResources();
+                }
                 return false;
             }
         }
@@ -218,13 +251,17 @@ namespace ChatDesktopApp.Services
 
         /// <summary>
         /// Đóng gói JSON kèm ký tự kết thúc \n và gửi qua NetworkStream.
+        /// Sử dụng SemaphoreSlim để đảm bảo thread-safe tuyệt đối khi gửi đồng thời từ nhiều nguồn.
         /// </summary>
         public async Task SendMessageAsync(ChatMessage message)
         {
             if (!IsConnected || _stream == null) return;
 
+            await _sendLock.WaitAsync();
             try
             {
+                if (!IsConnected || _stream == null) return;
+
                 string json = message.ToJson();
                 // ── TCP Framing Rule ─────────────────────────────────────────────────
                 // Mọi gói tin JSON PHẢI kết thúc bằng '\n' (LF, ASCII 0x0A).
@@ -249,6 +286,10 @@ namespace ChatDesktopApp.Services
             {
                 System.Diagnostics.Debug.WriteLine($"[TcpSocketClient] Lỗi gửi gói tin: {ex.Message}");
             }
+            finally
+            {
+                _sendLock.Release();
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════
@@ -263,7 +304,7 @@ namespace ChatDesktopApp.Services
         /// </summary>
         private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
         {
-            // Tăng buffer lên 8192 bytes: xử lý tốt hơn khi dồn nhiều gói
+            // Buffer 8192 bytes: xử lý tốt khi dồn nhiều gói
             byte[]     readBuffer   = new byte[8192];
             List<byte> pendingBytes = new List<byte>(8192);
 
@@ -305,12 +346,23 @@ namespace ChatDesktopApp.Services
             }
             finally
             {
-                bool wasConnected = _isConnected;
-                Disconnect();
+                bool wasConnected;
+                lock (_disconnectLock)
+                {
+                    wasConnected = _isConnected;
+                    CloseSocketResources();
+                }
+
+                if (wasConnected)
+                {
+                    OnDisconnected?.Invoke();
+                }
 
                 // Mất kết nối bất ngờ (không phải logout chủ động) → thử reconnect
                 if (wasConnected && _autoReconnect)
+                {
                     _ = Task.Run(() => TryReconnectAsync());
+                }
             }
         }
 
@@ -322,7 +374,7 @@ namespace ChatDesktopApp.Services
         {
             while (true)
             {
-                // Tìm ky tự '\n' (ASCII 10) — delimiter của giao thức
+                // Tìm ký tự '\n' (ASCII 10) — delimiter của giao thức
                 int newlineIndex = pendingBytes.IndexOf((byte)'\n');
                 if (newlineIndex == -1) break; // Chưa đủ gói — chờ bytes tiếp theo
 
@@ -353,11 +405,19 @@ namespace ChatDesktopApp.Services
                 ChatMessage msg = ChatMessage.FromJson(jsonStr);
                 if (msg == null) return;
 
-                // Bật auto-reconnect sau khi xác thực thành công
+                // Xử lý xác thực thành công / thất bại
                 if (msg.Action == "LOGIN_SUCCESS" && !string.IsNullOrEmpty(msg.Token))
                 {
-                    SessionToken   = msg.Token;
-                    _autoReconnect = true;
+                    SessionToken    = msg.Token;
+                    IsAuthenticated = true;
+                    _autoReconnect  = true;
+                    OnLoginSuccess?.Invoke();
+                }
+                else if (msg.Action == "LOGIN_FAILED")
+                {
+                    IsAuthenticated = false;
+                    _autoReconnect  = false;
+                    OnLoginFailed?.Invoke(msg.Content ?? "Tên đăng nhập không hợp lệ hoặc đã tồn tại.");
                 }
 
                 OnMessageReceived?.Invoke(msg);
@@ -369,65 +429,113 @@ namespace ChatDesktopApp.Services
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // PHẦN 5: AUTO-RECONNECT (Exponential Backoff)
+        // PHẦN 5: AUTO-RECONNECT (Exponential Backoff & Concurrency Guard)
         // ══════════════════════════════════════════════════════════════════
 
         /// <summary>
         /// Thử kết nối lại sau khi mất kết nối bất ngờ.
         /// Chiến lược Exponential Backoff: 2s → 4s → 8s (tối đa 3 lần).
-        /// Nếu thất bại hết, thông báo UI để người dùng kết nối thủ công.
+        /// Có Mutex _reconnectLock đảm bảo KHÔNG BAO GIỜ chạy nhiều vòng reconnect song song.
+        /// Có CancellationTokenSource cho phép hủy ngay lập tức khi Form đóng hoặc user đăng xuất.
         /// </summary>
         private async Task TryReconnectAsync()
         {
-            for (int attempt = 1; attempt <= MaxReconnectAttempts; attempt++)
+            // Ngăn chặn tạo nhiều vòng reconnect đồng thời
+            if (Interlocked.CompareExchange(ref _reconnectLock, 1, 0) != 0)
             {
-                OnReconnecting?.Invoke(attempt); // Thông báo UI: đang thử lần thứ N
-
-                // Exponential backoff: 2s, 4s, 8s
-                int delayMs = ReconnectBaseDelayMs * (int)Math.Pow(2, attempt - 1);
-                await Task.Delay(delayMs);
-
-                bool success = await ConnectAsync(_lastIp, _lastPort);
-                if (success)
-                {
-                    // Kết nối lại thành công → đăng nhập lại với username cũ
-                    await SendLoginAsync(CurrentUsername);
-                    return;
-                }
+                return;
             }
 
-            // Hết lần thử → thông báo UI
-            _autoReconnect = false;
-            OnErrorOccurred?.Invoke(
-                $"Không thể kết nối lại sau {MaxReconnectAttempts} lần thử. " +
-                "Vui lòng kiểm tra Server.");
+            try
+            {
+                _reconnectCts = new CancellationTokenSource();
+                var token = _reconnectCts.Token;
+
+                for (int attempt = 1; attempt <= MaxReconnectAttempts; attempt++)
+                {
+                    if (token.IsCancellationRequested || !_autoReconnect)
+                        return;
+
+                    OnReconnecting?.Invoke(attempt); // Thông báo UI: đang thử lần thứ N
+
+                    // Exponential backoff: 2s, 4s, 8s
+                    int delayMs = ReconnectBaseDelayMs * (int)Math.Pow(2, attempt - 1);
+                    try
+                    {
+                        await Task.Delay(delayMs, token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    if (token.IsCancellationRequested || !_autoReconnect)
+                        return;
+
+                    bool success = await ConnectAsync(_lastIp, _lastPort);
+                    if (success)
+                    {
+                        // Kết nối TCP thành công → gửi yêu cầu đăng nhập lại với username cũ
+                        await SendLoginAsync(CurrentUsername);
+                        // Trở về và chờ phản hồi LOGIN_SUCCESS từ Server trong ReceiveLoop
+                        return;
+                    }
+                }
+
+                // Hết 3 lần thử mà không thành công → thông báo UI
+                _autoReconnect = false;
+                OnErrorOccurred?.Invoke(
+                    $"Không thể kết nối lại sau {MaxReconnectAttempts} lần thử. " +
+                    "Vui lòng kiểm tra lại Server và đường truyền mạng.");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _reconnectLock, 0);
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════
-        // PHẦN 6: NGẮT KẾT NỐI
+        // PHẦN 6: NGẮT KẾT NỐI VÀ GIẢI PHÓNG TÀI NGUYÊN
         // ══════════════════════════════════════════════════════════════════
 
         /// <summary>
+        /// Đóng các tài nguyên socket và stream cấp thấp. Gọi bên trong lock(_disconnectLock).
+        /// </summary>
+        private void CloseSocketResources()
+        {
+            _isConnected = false;
+            IsAuthenticated = false;
+
+            try { _cts?.Cancel(); } catch { }
+            try { _stream?.Close(); } catch { }
+            try { _tcpClient?.Close(); } catch { }
+
+            _cts = null;
+            _stream = null;
+            _tcpClient = null;
+        }
+
+        /// <summary>
         /// Ngắt kết nối và giải phóng toàn bộ tài nguyên mạng một cách an toàn.
-        /// Thread-safe nhờ lock(_disconnectLock) — tránh race condition khi gọi đồng thời
-        /// từ ReceiveLoopAsync (background thread) và UI thread.
+        /// Hủy mọi tác vụ reconnect đang chờ và vô hiệu hóa auto-reconnect.
+        /// Thread-safe nhờ lock(_disconnectLock).
         /// </summary>
         public void Disconnect()
         {
             lock (_disconnectLock)
             {
-                if (!_isConnected) return;
-                _isConnected = false;
+                _autoReconnect = false;
 
-                try { _cts?.Cancel(); }       catch { }
-                try { _stream?.Close(); }     catch { }
-                try { _tcpClient?.Close(); }  catch { }
+                try { _reconnectCts?.Cancel(); } catch { }
+                _reconnectCts = null;
 
-                _cts       = null;
-                _stream    = null;
-                _tcpClient = null;
+                bool wasConnected = _isConnected;
+                CloseSocketResources();
 
-                OnDisconnected?.Invoke();
+                if (wasConnected)
+                {
+                    OnDisconnected?.Invoke();
+                }
             }
         }
     }
