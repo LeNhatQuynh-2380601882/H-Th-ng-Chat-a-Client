@@ -14,5 +14,7 @@ public enum MessageType {
     USER_LIST,      // Danh sách người dùng online
     LOGOUT,         // Client đăng xuất
     SYSTEM,         // Thông báo hệ thống
-    ERROR           // Thông báo lỗi gói tin / token không hợp lệ
+    ERROR,          // Thông báo lỗi gói tin / token không hợp lệ
+    PING,           // Heartbeat từ Client
+    PONG            // Phản hồi heartbeat từ Server
 }

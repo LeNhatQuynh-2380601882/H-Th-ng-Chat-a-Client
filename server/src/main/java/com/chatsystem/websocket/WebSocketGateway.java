@@ -41,6 +41,12 @@ public class WebSocketGateway extends WebSocketServer {
 
         MessageType action = msg.getAction();
 
+        // Guard: action không hợp lệ (enum không tồn tại trong JSON → Gson trả null → NPE)
+        if (action == null) {
+            sendError(conn, "Trường 'action' không hợp lệ hoặc không được hỗ trợ.");
+            return;
+        }
+
         if (action == MessageType.LOGIN) {
             String username = msg.getSender();
             if (username == null || username.trim().isEmpty()) {
@@ -92,6 +98,14 @@ public class WebSocketGateway extends WebSocketServer {
                     if (!sent) {
                         sendError(conn, "Người nhận '" + msg.getReceiver() + "' không online.");
                     }
+                }
+                break;
+
+            case PING:
+                // Phản hồi PONG để client đo RTT
+                if (conn.isOpen()) {
+                    ChatMessage pong = new ChatMessage(MessageType.PONG, "SERVER", msg.getSender(), "pong");
+                    conn.send(pong.toJson());
                 }
                 break;
 

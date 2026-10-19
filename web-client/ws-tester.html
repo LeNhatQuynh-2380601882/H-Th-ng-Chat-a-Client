@@ -502,8 +502,8 @@
                         appendLog('token', `🔑 Token đã lưu: ${activeToken}`);
                     }
 
-                    /* Đo RTT nếu là phản hồi PING */
-                    if (parsed.action === 'ERROR' && pingTs > 0) {
+                    /* Đo RTT khi nhận PONG */
+                    if (parsed.action === 'PONG' && pingTs > 0) {
                         const rtt = Math.round(performance.now() - pingTs);
                         elLatency.textContent = rtt;
                         pingTs = 0;
