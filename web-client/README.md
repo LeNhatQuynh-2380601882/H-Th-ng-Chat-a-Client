@@ -1,7 +1,7 @@
 # Tài Liệu Kỹ Thuật Web Client (Nhóm 11)
 
 **Học phần:** Lập trình mạng máy tính  
-**Người thực hiện:** Trương Hoàng Phúc (MSSV: `2380601760`)  
+**Người thực hiện:** Trương Hồng Phúc (MSSV: `2380601760`)  
 **Vị trí:** Lập trình viên Web Client (HTML5 / CSS3 / JavaScript Native)
 
 ---
