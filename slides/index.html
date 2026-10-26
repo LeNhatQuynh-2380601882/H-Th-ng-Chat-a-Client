@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hệ thống Chat đa Client – Nhóm 11 – 23DTHA6</title>
+<meta name="description" content="Slide thuyết trình đồ án Hệ thống Chat đa Client (Web/Desktop) với giao thức JSON – HUTECH.">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg1:#0b1020;--bg2:#141a35;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.12);
+  --txt:#e8ecff;--mut:#9aa4c7;--a1:#7c5cff;--a2:#22d3ee;--a3:#f472b6;--a4:#34d399;--a5:#fbbf24;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:Outfit,sans-serif;color:var(--txt);
+  background:radial-gradient(1200px 700px at 10% 10%,#2a1f6b55,transparent),radial-gradient(900px 600px at 90% 90%,#0e749044,transparent),linear-gradient(135deg,var(--bg1),var(--bg2))}
+.deck{position:relative;width:100vw;height:100vh}
+.slide{position:absolute;inset:0;padding:6vh 7vw;display:flex;flex-direction:column;justify-content:center;
+  opacity:0;transform:translateX(60px) scale(.98);transition:all .6s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.slide.active{opacity:1;transform:none;pointer-events:auto}
+.slide.prev{transform:translateX(-60px) scale(.98)}
+.tag{display:inline-block;padding:6px 14px;border:1px solid var(--line);border-radius:99px;color:var(--a2);font-size:.95rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:18px;width:max-content}
+h1{font-size:clamp(2.2rem,5vw,4.4rem);font-weight:800;line-height:1.1}
+h2{font-size:clamp(1.8rem,3.4vw,3rem);font-weight:800;margin-bottom:4vh}
+.grad{background:linear-gradient(90deg,var(--a1),var(--a2),var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);font-size:clamp(1rem,1.6vw,1.4rem);margin-top:2vh;max-width:900px}
+.grid{display:grid;gap:22px}
+.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;backdrop-filter:blur(12px);
+  transition:transform .3s,border-color .3s,box-shadow .3s}
+.card:hover{transform:translateY(-6px);border-color:var(--a1);box-shadow:0 20px 40px -20px var(--a1)}
+.card .ic{font-size:2.2rem;margin-bottom:10px}
+.card h3{font-size:1.25rem;margin-bottom:6px}
+.card p{color:var(--mut);font-size:1rem;line-height:1.5}
+.slide.active .card{animation:up .6s both}
+.slide.active .card:nth-child(2){animation-delay:.08s}.slide.active .card:nth-child(3){animation-delay:.16s}
+.slide.active .card:nth-child(4){animation-delay:.24s}.slide.active .card:nth-child(5){animation-delay:.32s}
+.slide.active .card:nth-child(6){animation-delay:.4s}.slide.active .card:nth-child(7){animation-delay:.48s}.slide.active .card:nth-child(8){animation-delay:.56s}
+@keyframes up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+.member{text-align:center}
+.avatar{width:90px;height:90px;border-radius:50%;margin:0 auto 14px;display:grid;place-items:center;font-size:2rem;font-weight:800;
+  background:linear-gradient(135deg,var(--a1),var(--a2))}
+.member:nth-child(2) .avatar{background:linear-gradient(135deg,var(--a3),var(--a5))}
+.member:nth-child(3) .avatar{background:linear-gradient(135deg,var(--a4),var(--a2))}
+.role{color:var(--a2);font-weight:600;margin-bottom:8px}
+/* architecture */
+.arch{display:flex;align-items:center;justify-content:space-between;gap:2vw}
+.col{display:flex;flex-direction:column;gap:22px}
+.node{padding:22px 26px;border-radius:18px;border:1px solid var(--line);background:var(--card);text-align:center;min-width:220px}
+.node b{display:block;font-size:1.2rem}.node small{color:var(--mut)}
+.node.srv{min-width:300px;padding:40px;border-color:var(--a1);box-shadow:0 0 60px -10px var(--a1)}
+.wire{flex:1;height:3px;position:relative;background:linear-gradient(90deg,var(--a2),var(--a1));border-radius:3px}
+.wire span{position:absolute;top:-28px;left:50%;transform:translateX(-50%);color:var(--mut);font-size:.9rem;white-space:nowrap}
+.wire::after{content:"";position:absolute;top:-4px;width:11px;height:11px;border-radius:50%;background:#fff;box-shadow:0 0 12px var(--a2);animation:flow 2s linear infinite}
+@keyframes flow{from{left:0}to{left:100%}}
+.wires{display:flex;flex-direction:column;gap:90px;flex:1}
+/* packet */
+.packet{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+.field{padding:16px 22px;border-radius:14px;background:var(--card);border:1px solid var(--line);text-align:center;min-width:150px}
+.field b{display:block;color:var(--a2);font-size:1.1rem}.field small{color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:4vh}
+.chip{padding:8px 16px;border-radius:99px;background:linear-gradient(90deg,#7c5cff33,#22d3ee33);border:1px solid var(--line)}
+/* flow steps */
+.steps{display:flex;align-items:stretch;gap:14px}
+.step{flex:1;position:relative}
+.step .n{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:linear-gradient(135deg,var(--a1),var(--a3));margin-bottom:12px}
+.big{font-size:clamp(2.6rem,6vw,5rem);font-weight:800}
+/* nav */
+.bar{position:fixed;left:0;bottom:0;height:4px;background:linear-gradient(90deg,var(--a1),var(--a2),var(--a3));transition:width .5s}
+.nav{position:fixed;right:28px;bottom:22px;display:flex;gap:10px;align-items:center;color:var(--mut);z-index:5}
+.nav button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:1.2rem;cursor:pointer;transition:.2s}
+.nav button:hover{background:var(--a1)}
+.footer{position:fixed;left:28px;bottom:22px;color:var(--mut);font-size:.9rem}
+.orb{position:fixed;border-radius:50%;filter:blur(80px);opacity:.35;animation:float 12s ease-in-out infinite;pointer-events:none}
+@keyframes float{50%{transform:translate(40px,-30px)}}
+@media(max-width:900px){.g3,.g4{grid-template-columns:1fr 1fr}.arch,.steps{flex-direction:column}.wires{gap:20px}}
+</style>
+</head>
+<body>
+<div class="orb" style="width:380px;height:380px;background:var(--a1);top:-80px;right:10%"></div>
+<div class="orb" style="width:300px;height:300px;background:var(--a2);bottom:-60px;left:5%;animation-delay:-6s"></div>
+
+<main class="deck" id="deck">
+
+<!-- 1. Cover -->
+<section class="slide">
+  <span class="tag">HUTECH · Lập trình mạng máy tính · Nhóm 11</span>
+  <h1>Hệ thống Chat <span class="grad">đa Client</span><br>Web & Desktop với giao thức JSON</h1>
+  <p class="sub">Xây dựng hệ thống chat Client–Server đa nền tảng, đóng gói dữ liệu JSON trên kết nối TCP Socket & WebSocket.</p>
+  <p class="sub" style="margin-top:5vh">Lớp 23DTHA6 · Giảng viên hướng dẫn: ……………</p>
+</section>
+
+<!-- 2. Team -->
+<section class="slide">
+  <span class="tag">Thành viên</span>
+  <h2>Nhóm thực hiện</h2>
+  <div class="grid g3">
+    <div class="card member"><div class="avatar">Q</div><h3>Lê Nhật Quỳnh</h3><div class="role">Nhóm trưởng · Server</div><p>2380601882<br>Khung dự án, Core Server TCP & WebSocket Gateway</p></div>
+    <div class="card member"><div class="avatar">H</div><h3>Phan Quốc Hùng</h3><div class="role">Desktop Client</div><p>2380600781<br>Ứng dụng C# WinForms, kết nối TCP, chat & gửi file</p></div>
+    <div class="card member"><div class="avatar">P</div><h3>Trương Hoàng Phúc</h3><div class="role">Web Client</div><p>2380601760<br>Giao diện Web, WebSocket, kiểm thử liên nền tảng</p></div>
+  </div>
+</section>
+
+<!-- 3. Problem & goals -->
+<section class="slide">
+  <span class="tag">Đặt vấn đề</span>
+  <h2>Mục tiêu đề tài</h2>
+  <div class="grid g2">
+    <div class="card"><div class="ic">🌐</div><h3>Đa nền tảng</h3><p>Người dùng trên trình duyệt Web và ứng dụng Desktop chat được với nhau theo thời gian thực.</p></div>
+    <div class="card"><div class="ic">📦</div><h3>Giao thức thống nhất</h3><p>Mọi gói tin dùng chung một định dạng JSON, dễ mở rộng và dễ debug.</p></div>
+    <div class="card"><div class="ic">⚡</div><h3>Thời gian thực & ổn định</h3><p>Xử lý phân mảnh / dồn gói TCP, nhiều client đồng thời, tự kết nối lại.</p></div>
+    <div class="card"><div class="ic">🔐</div><h3>Quản lý phiên</h3><p>Đăng nhập cấp Session Token, kiểm soát người dùng online / offline.</p></div>
+  </div>
+</section>
+
+<!-- 4. Architecture -->
+<section class="slide">
+  <span class="tag">Kiến trúc</span>
+  <h2>Mô hình Client – Server</h2>
+  <div class="arch">
+    <div class="col">
+      <div class="node"><b>🖥️ Desktop Client</b><small>C# WinForms</small></div>
+      <div class="node"><b>🌍 Web Client</b><small>HTML5 · CSS3 · JavaScript</small></div>
+    </div>
+    <div class="wires">
+      <div class="wire"><span>TCP Socket · cổng 8888</span></div>
+      <div class="wire"><span>WebSocket · cổng 8887</span></div>
+    </div>
+    <div class="node srv"><b style="font-size:1.6rem">☕ Core Server</b><small>Java · Gateway trung chuyển</small><br><br><small>Quản lý client · Token · Định tuyến · Broadcast</small></div>
+  </div>
+</section>
+
+<!-- 5. Tech stack -->
+<section class="slide">
+  <span class="tag">Công nghệ</span>
+  <h2>Công nghệ sử dụng</h2>
+  <div class="grid g4">
+    <div class="card"><div class="ic">☕</div><h3>Java</h3><p>Core Server, đa luồng xử lý từng client.</p></div>
+    <div class="card"><div class="ic">🔌</div><h3>Java-WebSocket</h3><p>Cổng Gateway cho trình duyệt.</p></div>
+    <div class="card"><div class="ic">🧩</div><h3>Gson</h3><p>Đóng / mở gói JSON phía Server.</p></div>
+    <div class="card"><div class="ic">🟪</div><h3>C# .NET WinForms</h3><p>Ứng dụng Desktop Client.</p></div>
+    <div class="card"><div class="ic">🎨</div><h3>HTML5 · CSS3</h3><p>Giao diện Web hiện đại, responsive.</p></div>
+    <div class="card"><div class="ic">🅱️</div><h3>Bootstrap 5</h3><p>Bố cục và thành phần giao diện.</p></div>
+    <div class="card"><div class="ic">⚙️</div><h3>JavaScript</h3><p>WebSocket Native của trình duyệt.</p></div>
+    <div class="card"><div class="ic">🌿</div><h3>Git · GitHub</h3><p>Làm việc nhóm theo nhánh & Pull Request.</p></div>
+  </div>
+</section>
+
+<!-- 6. Packet -->
+<section class="slide">
+  <span class="tag">Giao thức</span>
+  <h2>Cấu trúc gói tin JSON</h2>
+  <div class="packet">
+    <div class="field"><b>action</b><small>Loại hành động</small></div>
+    <div class="field"><b>token</b><small>Phiên đăng nhập</small></div>
+    <div class="field"><b>sender</b><small>Người gửi</small></div>
+    <div class="field"><b>receiver</b><small>Người nhận / tất cả</small></div>
+    <div class="field"><b>content</b><small>Nội dung</small></div>
+    <div class="field"><b>timestamp</b><small>Thời điểm gửi</small></div>
+  </div>
+  <div class="chips">
+    <span class="chip">🔑 Đăng nhập</span><span class="chip">💬 Chat riêng</span><span class="chip">👥 Chat nhóm</span>
+    <span class="chip">✍️ Đang nhập…</span><span class="chip">📎 Gửi file</span><span class="chip">🟢 Danh sách online</span><span class="chip">🚪 Đăng xuất</span>
+  </div>
+</section>
+
+<!-- 7. Framing -->
+<section class="slide">
+  <span class="tag">Kỹ thuật</span>
+  <h2>Xử lý phân mảnh & dồn gói TCP</h2>
+  <div class="grid g3">
+    <div class="card"><div class="ic">🧱</div><h3>Vấn đề</h3><p>TCP là luồng byte liên tục: một tin có thể bị cắt nhỏ, nhiều tin có thể dính vào nhau.</p></div>
+    <div class="card"><div class="ic">↵</div><h3>Giải pháp</h3><p>Mỗi gói JSON kết thúc bằng ký tự xuống dòng làm dấu phân cách, mã hóa UTF-8.</p></div>
+    <div class="card"><div class="ic">✅</div><h3>Kết quả</h3><p>Phía nhận đọc theo từng dòng, luôn tách được trọn vẹn từng gói tin độc lập.</p></div>
+  </div>
+</section>
+
+<!-- 8. Flow -->
+<section class="slide">
+  <span class="tag">Luồng hoạt động</span>
+  <h2>Một tin nhắn đi như thế nào?</h2>
+  <div class="steps">
+    <div class="card step"><div class="n">1</div><h3>Đăng nhập</h3><p>Client gửi tên, Server cấp Token và báo danh sách online.</p></div>
+    <div class="card step"><div class="n">2</div><h3>Gửi tin</h3><p>Client đóng gói JSON và gửi qua TCP hoặc WebSocket.</p></div>
+    <div class="card step"><div class="n">3</div><h3>Kiểm tra</h3><p>Server xác thực Token, xác định người nhận.</p></div>
+    <div class="card step"><div class="n">4</div><h3>Định tuyến</h3><p>Gửi riêng 1 người hoặc broadcast cho cả nhóm.</p></div>
+    <div class="card step"><div class="n">5</div><h3>Hiển thị</h3><p>Client nhận, mở gói và hiển thị ngay lập tức.</p></div>
+  </div>
+</section>
+
+<!-- 9. Features -->
+<section class="slide">
+  <span class="tag">Chức năng</span>
+  <h2>Tính năng nổi bật</h2>
+  <div class="grid g4">
+    <div class="card"><div class="ic">👥</div><h3>Chat nhóm</h3><p>Phòng chung cho mọi người.</p></div>
+    <div class="card"><div class="ic">💬</div><h3>Chat riêng</h3><p>Nhắn tin 1–1 bảo mật theo phiên.</p></div>
+    <div class="card"><div class="ic">🟢</div><h3>Online / Typing</h3><p>Biết ai đang online, ai đang gõ.</p></div>
+    <div class="card"><div class="ic">📎</div><h3>Gửi ảnh & file</h3><p>Kéo-thả, dán Ctrl+V, xem ảnh phóng to.</p></div>
+    <div class="card"><div class="ic">😀</div><h3>Emoji</h3><p>Bảng chọn biểu tượng cảm xúc.</p></div>
+    <div class="card"><div class="ic">🔔</div><h3>Thông báo</h3><p>Báo tin nhắn mới khi đang ở cửa sổ khác.</p></div>
+    <div class="card"><div class="ic">🔍</div><h3>Tìm kiếm & lịch sử</h3><p>Lưu và tra cứu lịch sử chat.</p></div>
+    <div class="card"><div class="ic">🔄</div><h3>Tự kết nối lại</h3><p>Xử lý mất mạng, đăng xuất an toàn.</p></div>
+  </div>
+</section>
+
+<!-- 10. Demo -->
+<section class="slide" style="align-items:center;text-align:center">
+  <span class="tag">Demo</span>
+  <div class="big grad">Demo trực tiếp</div>
+  <p class="sub">Desktop Client ⇄ Core Server ⇄ Web Client — chat liên nền tảng theo thời gian thực</p>
+</section>
+
+<!-- 11. Results -->
+<section class="slide">
+  <span class="tag">Tổng kết</span>
+  <h2>Kết quả & Hướng phát triển</h2>
+  <div class="grid g2">
+    <div class="card"><div class="ic">🏆</div><h3>Đạt được</h3><p>• Chat Web ⇄ Desktop thời gian thực<br>• Giao thức JSON thống nhất, framing ổn định<br>• Nhiều client đồng thời, gửi file, emoji, thông báo<br>• Làm việc nhóm qua GitHub</p></div>
+    <div class="card"><div class="ic">🚀</div><h3>Hướng phát triển</h3><p>• Mã hóa đầu cuối (TLS / WSS)<br>• Lưu trữ cơ sở dữ liệu, tài khoản & mật khẩu<br>• Gọi thoại / video<br>• Ứng dụng di động</p></div>
+  </div>
+</section>
+
+<!-- 12. Thanks -->
+<section class="slide" style="align-items:center;text-align:center">
+  <h1 class="grad" style="font-size:clamp(3rem,8vw,6.5rem)">Cảm ơn!</h1>
+  <p class="sub">Nhóm 11 · 23DTHA6 · Rất mong nhận được góp ý của thầy cô và các bạn</p>
+</section>
+
+</main>
+
+<div class="footer">Nhóm 11 · Hệ thống Chat đa Client</div>
+<div class="nav"><button id="btn-prev" aria-label="Trước">‹</button><span id="counter"></span><button id="btn-next" aria-label="Sau">›</button></div>
+<div class="bar" id="bar"></div>
+
+<script>
+const s=[...document.querySelectorAll('.slide')];let i=0;
+function go(n){i=Math.max(0,Math.min(s.length-1,n));s.forEach((e,k)=>{e.classList.toggle('active',k===i);e.classList.toggle('prev',k<i)});
+document.getElementById('counter').textContent=`${i+1} / ${s.length}`;document.getElementById('bar').style.width=`${(i+1)/s.length*100}%`}
+document.getElementById('btn-next').onclick=()=>go(i+1);document.getElementById('btn-prev').onclick=()=>go(i-1);
+addEventListener('keydown',e=>{if(['ArrowRight',' ','PageDown'].includes(e.key))go(i+1);if(['ArrowLeft','PageUp'].includes(e.key))go(i-1);if(e.key==='f')document.documentElement.requestFullscreen()});
+go(0);
+</script>
+</body>
+</html>
